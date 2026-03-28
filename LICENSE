@@ -1,0 +1,54 @@
+py_directinput_ffb License (Non-Commercial Use Only)
+Copyright (c) 2026
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to use,
+copy, modify, and distribute the Software for **non-commercial purposes only**,
+subject to the following conditions:
+
+1. Non-Commercial Use Only
+   The Software may not be used for commercial purposes. Commercial purposes
+   include, but are not limited to:
+   - Selling the Software
+   - Using the Software in a paid product or service
+   - Integrating the Software into commercial applications
+   - Any use intended for commercial advantage or monetary compensation
+
+2. Attribution
+   Redistributions of the Software must retain the above copyright notice,
+   this license, and any disclaimers.
+
+3. Modifications
+   You are allowed to modify the Software. Modified versions must clearly
+   indicate that changes have been made.
+
+4. No Warranty
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+5. Liability
+   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+   DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+   USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. Commercial Licensing
+   If you wish to use this Software for commercial purposes, you must obtain
+   a separate commercial license from the author.
+
+7. Force Feedback Safety Disclaimer
+
+    The Software interacts with force feedback (FFB) hardware devices that can
+    produce physical motion and mechanical force.
+
+    Use of the Software may result in:
+        - Damage to hardware devices
+        - Unexpected or excessive mechanical forces
+        - Personal injury
+
+The Software is provided for experimental and development purposes only.
+
+By using this Software, the user assumes all risks associated with its use.
+The authors and copyright holders shall not be liable for any damages,
+injuries, or losses resulting from the use or misuse of the Software.
