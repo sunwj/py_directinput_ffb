@@ -70,7 +70,7 @@ If you are unsure about the behavior of an effect, **do not run it on real hardw
 This package is designed to run on **Windows only**, as it depends on DirectInput.
 
 ```bash
-git clone https://github.com/your-repo/py_directinput_ffb.git
+git clone https://github.com/sunwj/py_directinput_ffb.git
 cd py_directinput_ffb
 ```
 
