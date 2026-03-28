@@ -24,6 +24,8 @@ from typing import Callable
 
 from directinput_ffb.dinput_types import kernel32
 from directinput_ffb.dinput_definitions import (
+    DIDFT_AXIS,
+    DIDFT_FFACTUATOR,
     DIJOFS_X,
     DIJOFS_Y,
     GUID_ConstantForce,
@@ -40,6 +42,8 @@ from directinput_ffb.dinput_definitions import (
 )
 from directinput_ffb import (
     create_direct_input,
+    enum_device_objects,
+    enum_ffb_axes_actuator_offsets,
     enum_devices,
     create_device,
     set_cooperative_level,
@@ -104,6 +108,12 @@ def demo() -> None:
     print("Acquiring device...")
     acquire(device)
 
+    print("Enumerating device object information...")
+    obj_infos = enum_device_objects(device, DIDFT_AXIS | DIDFT_FFACTUATOR)
+    for obj_info in obj_infos: print(f'{obj_info.name}, {obj_info.offset}, {hex(obj_info.type_flags)}, is_axis: {obj_info.is_axis}, is_actuator: {obj_info.is_ff_actuator}')
+
+    axes_offsets = enum_ffb_axes_actuator_offsets(device)
+
     try:
         print("Enumerating supported effects...")
         supported = enum_effects(device)
@@ -121,7 +131,7 @@ def demo() -> None:
                     magnitude=6000,
                     direction_hundredths_deg=18000,
                     duration_us=900_000,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -133,7 +143,7 @@ def demo() -> None:
                     end_magnitude=7000,
                     direction_hundredths_deg=0,
                     duration_us=900_000,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -147,7 +157,7 @@ def demo() -> None:
                     period_us=220_000,
                     direction_hundredths_deg=9000,
                     duration_us=900_000,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -161,7 +171,7 @@ def demo() -> None:
                     period_us=260_000,
                     direction_hundredths_deg=9000,
                     duration_us=900_000,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -175,7 +185,7 @@ def demo() -> None:
                     period_us=260_000,
                     direction_hundredths_deg=9000,
                     duration_us=900_000,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -189,7 +199,7 @@ def demo() -> None:
                     period_us=240_000,
                     direction_hundredths_deg=9000,
                     duration_us=900_000,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -203,7 +213,7 @@ def demo() -> None:
                     period_us=240_000,
                     direction_hundredths_deg=9000,
                     duration_us=900_000,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -217,7 +227,7 @@ def demo() -> None:
                     negative_saturation=10000,
                     dead_band=300,
                     offset=0,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -231,7 +241,7 @@ def demo() -> None:
                     negative_saturation=10000,
                     dead_band=0,
                     offset=0,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -245,7 +255,7 @@ def demo() -> None:
                     negative_saturation=10000,
                     dead_band=0,
                     offset=0,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
             (
@@ -259,7 +269,7 @@ def demo() -> None:
                     negative_saturation=10000,
                     dead_band=0,
                     offset=0,
-                    axes_offsets=(DIJOFS_X, DIJOFS_Y),
+                    axes_offsets=axes_offsets,
                 ),
             ),
         ]

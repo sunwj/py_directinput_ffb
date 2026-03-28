@@ -16,6 +16,8 @@ may access them.
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
@@ -526,6 +528,13 @@ def create_friction_effect(device: POINTER(IDirectInputDevice8W), **kwargs) -> C
     return create_condition_effect(device, effect_guid=GUID_Friction, **kwargs)
 
 
+def angle_deg_to_cartesian(angle_deg: float, scale: int = 10000) -> tuple[int, int]:
+    radians = math.radians(angle_deg)
+    x = int(round(math.cos(radians) * scale))
+    y = int(round(math.sin(radians) * scale))
+    return x, y
+
+
 __all__ = [
     "EffectHandle",
     "ConstantForceEffectHandle",
@@ -545,4 +554,5 @@ __all__ = [
     "create_damper_effect",
     "create_inertia_effect",
     "create_friction_effect",
+    "angle_deg_to_cartesian",
 ]

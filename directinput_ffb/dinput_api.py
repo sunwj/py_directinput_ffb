@@ -34,17 +34,21 @@ from .dinput_definitions import (
     DISCL_FOREGROUND,
     GUID_XAxis,
     GUID_YAxis,
+    DIDFT_ALL,
     DIDFT_AXIS,
+    DIDFT_FFACTUATOR,
     DIDFT_ANYINSTANCE,
     DIDFT_OPTIONAL,
     DIDOI_ASPECTPOSITION,
     DIOBJECTDATAFORMAT,
     DIDATAFORMAT,
     MiniJoystickState,
+    LPDIENUMDEVICEOBJECTSCALLBACKW,
     LPDIENUMDEVICESCALLBACKW,
     LPDIENUMEFFECTSCALLBACKW,
     EnumeratedDevice,
     EnumeratedEffect,
+    EnumeratedDeviceObjectInfo
 )
 
 
@@ -114,8 +118,74 @@ def get_ffb_hwnd() -> HWND:
 # Root DirectInput creation and device enumeration
 # ---------------------------------------------------------------------------
 
+_object_enum_callbacks = []
 _device_enum_callbacks = []
 _effect_enum_callbacks = []
+
+
+def enum_device_objects(device, flags: int = DIDFT_ALL) -> list[EnumeratedDeviceObjectInfo]:
+    """
+    Enumerate DirectInput objects on a device.
+
+    Parameters
+    ----------
+    device:
+        IDirectInputDevice8W COM object.
+    flags:
+        EnumObjects filter flags.  Pass DIDFT_AXIS | DIDFT_FFACTUATOR to
+        enumerate only force-feedback actuator axes.
+
+    Returns
+    -------
+    list[DeviceObjectInfo]
+        One Python object per enumerated DirectInput object.
+    """
+    results: list[EnumeratedDeviceObjectInfo] = []
+
+    def _cb(lpobj, _pvref):
+        obj = lpobj.contents
+        results.append(
+            EnumeratedDeviceObjectInfo(
+                guid_type=GUID(str(obj.guidType)),
+                name=obj.tszName,
+                offset=int(obj.dwOfs),
+                type_flags=int(obj.dwType),
+                flags=int(obj.dwFlags),
+                ff_max_force=int(obj.dwFFMaxForce),
+                ff_force_resolution=int(obj.dwFFForceResolution),
+                collection_number=int(obj.wCollectionNumber),
+                designator_index=int(obj.wDesignatorIndex),
+                usage_page=int(obj.wUsagePage),
+                usage=int(obj.wUsage),
+                dimension=int(obj.dwDimension),
+                exponent=int(obj.wExponent),
+                report_id=int(obj.wReportId)
+            )
+        )
+        return DIENUM_CONTINUE
+
+    cb = LPDIENUMDEVICEOBJECTSCALLBACKW(_cb)
+    _object_enum_callbacks.append(cb)
+    device.EnumObjects(cb, None, flags)
+    return results
+
+
+def enum_ffb_axes_actuator_offsets(device):
+    axes_offset = []
+
+    def _cb(lpobj, _pvref):
+        obj = lpobj.contents
+        obj_type = int(obj.dwType)
+
+        if bool(obj_type & DIDFT_AXIS) and bool(obj_type & DIDFT_FFACTUATOR):
+            axes_offset.append(int(obj.dwOfs))
+        
+        return DIENUM_CONTINUE
+
+    cb = LPDIENUMDEVICEOBJECTSCALLBACKW(_cb)
+    _object_enum_callbacks.append(cb)
+    device.EnumObjects(cb, None, DIDFT_AXIS | DIDFT_FFACTUATOR)
+    return axes_offset
 
 
 def create_direct_input() -> POINTER(IDirectInput8W):

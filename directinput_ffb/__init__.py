@@ -20,6 +20,8 @@ from .dinput_api import (
     acquire,
     unacquire,
     enum_effects,
+    enum_device_objects,
+    enum_ffb_axes_actuator_offsets
 )
 from .dinput_effects import (
     EffectHandle,

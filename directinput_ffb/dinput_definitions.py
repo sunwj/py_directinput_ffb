@@ -140,6 +140,11 @@ DIDFT_OPTIONAL = 0x80000000
 
 DIDOI_ASPECTPOSITION = 0x00000100
 
+DIDFT_ALL = 0x00000000
+DIDFT_AXIS = 0x00000003
+DIDFT_FFACTUATOR = 0x01000000
+DIDFT_OUTPUT = 0x10000000
+
 # ---------------------------------------------------------------------------
 # IIDs and standard object/effect GUIDs
 # ---------------------------------------------------------------------------
@@ -175,6 +180,39 @@ GUID_POV = GUID("{A36D02F2-C9F3-11CF-BFC7-444553540000}")
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
+class EnumeratedDeviceObjectInfo:
+    """High-level Python view of one DirectInput device object."""
+
+    guid_type: GUID
+    name: str
+    offset: int
+    type_flags: int
+    flags: int
+    ff_max_force: int
+    ff_force_resolution: int
+    collection_number: int
+    designator_index: int
+    usage_page: int
+    usage: int
+    dimension: int
+    exponent: int
+    report_id: int
+
+    @property
+    def is_axis(self) -> bool:
+        # The low byte stores the basic object type.  DIDFT_AXIS is 0x03.
+        return bool(self.type_flags & DIDFT_AXIS)
+
+    @property
+    def is_ff_actuator(self) -> bool:
+        return bool(self.type_flags & DIDFT_FFACTUATOR)
+
+    @property
+    def is_output(self) -> bool:
+        return bool(self.type_flags & DIDFT_OUTPUT)
+    
+
+@dataclass(frozen=True)
 class EnumeratedDevice:
     """Small Python-friendly representation of a DirectInput device.
 
@@ -206,6 +244,26 @@ class EnumeratedEffect:
 # ---------------------------------------------------------------------------
 # ctypes structure declarations
 # ---------------------------------------------------------------------------
+
+class DIDEVICEOBJECTINSTANCEW(C.Structure):
+    _fields_ = [
+        ("dwSize", DWORD),
+        ("guidType", GUID),
+        ("dwOfs", DWORD),
+        ("dwType", DWORD),
+        ("dwFlags", DWORD),
+        ("tszName", WCHAR * MAX_PATH),
+        ("dwFFMaxForce", DWORD),
+        ("dwFFForceResolution", DWORD),
+        ("wCollectionNumber", WORD),
+        ("wDesignatorIndex", WORD),
+        ("wUsagePage", WORD),
+        ("wUsage", WORD),
+        ("dwDimension", DWORD),
+        ("wExponent", WORD),
+        ("wReportId", WORD),
+    ]
+
 
 class DIDEVICEINSTANCEW(C.Structure):
     _fields_ = [
@@ -349,9 +407,11 @@ class MiniJoystickState(C.Structure):
 # Callback prototypes
 # ---------------------------------------------------------------------------
 
+LPDIDEVICEOBJECTINSTANCEW = POINTER(DIDEVICEOBJECTINSTANCEW)
 LPDIDEVICEINSTANCEW = POINTER(DIDEVICEINSTANCEW)
 LPDIEFFECTINFOW = POINTER(DIEFFECTINFOW)
 
+LPDIENUMDEVICEOBJECTSCALLBACKW = C.WINFUNCTYPE(BOOL, LPDIDEVICEOBJECTINSTANCEW, LPVOID)
 LPDIENUMDEVICESCALLBACKW = C.WINFUNCTYPE(BOOL, LPDIDEVICEINSTANCEW, LPVOID)
 LPDIENUMEFFECTSCALLBACKW = C.WINFUNCTYPE(BOOL, LPDIEFFECTINFOW, LPVOID)
 
@@ -397,7 +457,7 @@ class IDirectInputDevice8W(IUnknown):
         COMMETHOD([], HRESULT, "GetCapabilities",
                   (["in", "out"], LPVOID, "lpDIDevCaps")),
         COMMETHOD([], HRESULT, "EnumObjects",
-                  (["in"], LPVOID, "lpCallback"),
+                  (["in"], LPDIENUMDEVICEOBJECTSCALLBACKW, "lpCallback"),
                   (["in"], LPVOID, "pvRef"),
                   (["in"], DWORD, "dwFlags")),
         COMMETHOD([], HRESULT, "GetProperty",
@@ -526,8 +586,10 @@ class IDirectInput8W(IUnknown):
 
 
 __all__ = [name for name in globals() if name.isupper() or name.startswith("IDirect") or name.startswith("DI") or name.startswith("GUID_") or name in {
+    "EnumeratedDeviceObjectInfo",
     "EnumeratedDevice",
     "EnumeratedEffect",
+    "DIDEVICEOBJECTINSTANCEW",
     "DIDEVICEINSTANCEW",
     "DIEFFECTINFOW",
     "DICONSTANTFORCE",
@@ -541,4 +603,6 @@ __all__ = [name for name in globals() if name.isupper() or name.startswith("IDir
     "MiniJoystickState",
     "LPDIENUMDEVICESCALLBACKW",
     "LPDIENUMEFFECTSCALLBACKW",
+    "LPDIDEVICEOBJECTINSTANCEW",
+    "LPDIENUMDEVICEOBJECTSCALLBACKW",
 }]
