@@ -1,0 +1,116 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Bytecode / cache
+*.pyo
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments (all platforms)
+.venv/
+venv/
+env/
+ENV/
+
+# =========================
+# IDE / Editor (cross-platform)
+# =========================
+.vscode/
+.idea/
+*.code-workspace
+
+# VSCode OS-specific junk
+.vscode-test/
+
+# =========================
+# OS files (cross-platform)
+# =========================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# macOS resource forks
+._*
+
+# macOS Spotlight / Trash
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+.nfs*
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Python tooling caches
+# =========================
+.mypy_cache/
+.pytest_cache/
+.cache/
+
+# =========================
+# Coverage / reports
+# =========================
+.coverage
+htmlcov/
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Windows build artifacts (future C/C++)
+# =========================
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.dll
+*.exp
+
+# =========================
+# Temp / swap files
+# =========================
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+
+# =========================
+# Optional project-specific
+# =========================
+# Local experiments
+scratch.py
+test_local.py
+
+# Ignore downloaded test assets (if any)
+downloads/

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from dinput_types import (
+from .dinput_types import (
     C,
     GUID,
     IUnknown,
@@ -149,6 +149,17 @@ IID_IDirectInputDevice8W = GUID("{54D41081-DC15-4833-A41B-748F73A38179}")
 IID_IDirectInputEffect = GUID("{E7E1F7C0-88D2-11D0-9AD0-00A0C9A06E35}")
 
 GUID_ConstantForce = GUID("{13541C20-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_RampForce = GUID("{13541C21-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_Square = GUID("{13541C22-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_Sine = GUID("{13541C23-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_Triangle = GUID("{13541C24-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_SawtoothUp = GUID("{13541C25-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_SawtoothDown = GUID("{13541C26-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_Spring = GUID("{13541C27-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_Damper = GUID("{13541C28-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_Inertia = GUID("{13541C29-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_Friction = GUID("{13541C2A-8E33-11D0-9AD0-00A0C9A06E35}")
+GUID_CustomForce = GUID("{13541C2B-8E33-11D0-9AD0-00A0C9A06E35}")
 
 GUID_XAxis = GUID("{A36D02E0-C9F3-11CF-BFC7-444553540000}")
 GUID_YAxis = GUID("{A36D02E1-C9F3-11CF-BFC7-444553540000}")
@@ -223,6 +234,51 @@ class DIEFFECTINFOW(C.Structure):
 
 class DICONSTANTFORCE(C.Structure):
     _fields_ = [("lMagnitude", LONG)]
+
+
+class DIRAMPFORCE(C.Structure):
+    """Type-specific payload for a ramp effect.
+
+    ``lStart`` and ``lEnd`` are signed magnitudes in the nominal DirectInput
+    range of roughly ``-10000`` through ``10000``.
+    """
+
+    _fields_ = [
+        ("lStart", LONG),
+        ("lEnd", LONG),
+    ]
+
+
+class DIPERIODIC(C.Structure):
+    """Type-specific payload for periodic effects.
+
+    This structure is shared by square, sine, triangle, sawtooth-up, and
+    sawtooth-down effects.
+    """
+
+    _fields_ = [
+        ("dwMagnitude", DWORD),
+        ("lOffset", LONG),
+        ("dwPhase", DWORD),
+        ("dwPeriod", DWORD),
+    ]
+
+
+class DICONDITION(C.Structure):
+    """Type-specific payload for condition effects.
+
+    Condition effects can use either one structure for the whole effect
+    direction or one structure per axis.
+    """
+
+    _fields_ = [
+        ("lOffset", LONG),
+        ("lPositiveCoefficient", LONG),
+        ("lNegativeCoefficient", LONG),
+        ("dwPositiveSaturation", DWORD),
+        ("dwNegativeSaturation", DWORD),
+        ("lDeadBand", LONG),
+    ]
 
 
 class DIENVELOPE(C.Structure):
@@ -475,6 +531,9 @@ __all__ = [name for name in globals() if name.isupper() or name.startswith("IDir
     "DIDEVICEINSTANCEW",
     "DIEFFECTINFOW",
     "DICONSTANTFORCE",
+    "DIRAMPFORCE",
+    "DIPERIODIC",
+    "DICONDITION",
     "DIENVELOPE",
     "DIEFFECT",
     "DIOBJECTDATAFORMAT",

@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import List
 
-from dinput_types import C, GUID, LPVOID, POINTER, HWND, kernel32, user32, DirectInput8Create
-from dinput_definitions import (
+from .dinput_types import C, GUID, LPVOID, POINTER, HWND, kernel32, user32, DirectInput8Create
+from .dinput_definitions import (
     DIRECTINPUT_VERSION,
     IID_IDirectInput8W,
     IDirectInput8W,
