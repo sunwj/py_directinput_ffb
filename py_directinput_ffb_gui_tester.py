@@ -2,20 +2,11 @@
 """
 PyQt6 GUI for testing DirectInput force-feedback effects with py_directinput_ffb.
 
-This file is intentionally self-contained so it can be dropped into the
-repository and run directly.  It exposes one tab per effect family and lets
-the user tune parameters before creating, downloading, starting, stopping,
-and unloading effects.
-
-The design goals are:
-- keep the GUI code readable even though the DirectInput binding is low-level
-- make device lifetime explicit
-- avoid leaking native effects by always stopping/unloading the old one first
-- expose all parameters supported by the current Python wrapper helpers
-
-Safety note:
-Force-feedback devices can move suddenly and with considerable force.
-Start with low values and test carefully.
+This version keeps the common effect parameters shared across tabs so the
+values do not change when switching between effect types. It also exposes
+direction and phase in whole degrees for usability while converting them to
+DirectInput's hundredths-of-a-degree units internally. Duration and period
+are edited in milliseconds and converted to microseconds internally.
 """
 
 from __future__ import annotations
@@ -25,12 +16,10 @@ import traceback
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -38,8 +27,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QPlainTextEdit,
+    QPushButton,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -49,10 +38,7 @@ from PyQt6.QtWidgets import (
 # -------------------------------------------------------------------------
 # Package imports
 # -------------------------------------------------------------------------
-#
-# The first import path matches the package name you said you now use.
-# The second path is a fallback for local development when the package has
-# not yet been renamed on disk.
+
 try:
     from directinput_ffb.dinput_api import (
         create_direct_input,
@@ -143,18 +129,8 @@ except ImportError:
     )
 
 
-# -------------------------------------------------------------------------
-# Small utility types and helpers
-# -------------------------------------------------------------------------
-
 @dataclass
 class DeviceContext:
-    """Keeps the live DirectInput objects together.
-
-    The binding stores native pointers into Python-owned memory, so it is
-    useful to keep all lifetime-sensitive objects in one place.
-    """
-
     di: object
     device: object
     hwnd: object
@@ -164,7 +140,6 @@ class DeviceContext:
 
 
 def guid_str(guid: object) -> str:
-    """Normalize a GUID-like object into one comparable string."""
     return str(guid).lower()
 
 
@@ -193,26 +168,15 @@ def wrap_group(title: str, layout) -> QGroupBox:
     return group
 
 
-# -------------------------------------------------------------------------
-# Common per-tab controls
-# -------------------------------------------------------------------------
+class SharedCommonControls(QWidget):
+    """
+    Common parameters shared by all effect tabs.
 
-class CommonEffectControls(QWidget):
-    """Parameter widgets shared by all effect types.
-
-    These correspond to the common pieces accepted by the helper functions:
-    - one or two axes
-    - direction in hundredths of degrees
-    - effect duration in microseconds
+    These widgets live once in the main window, not once per tab. That keeps
+    their values stable when switching tabs.
     """
 
-    def __init__(
-        self,
-        *,
-        default_direction: int = 0,
-        default_duration: int = 1_000_000,
-        allow_infinite_duration: bool = True,
-    ) -> None:
+    def __init__(self) -> None:
         super().__init__()
 
         self.axis_mode = QComboBox()
@@ -225,64 +189,59 @@ class CommonEffectControls(QWidget):
             "or on both X and Y."
         )
 
-        self.direction = make_spinbox(
+        # User edits whole degrees; DirectInput receives hundredths of degrees.
+        self.direction_deg = make_spinbox(
             0,
-            35999,
-            default_direction,
-            step=100,
-            suffix=" x0.01°",
-            tooltip="Effect direction in hundredths of a degree.",
+            359,
+            0,
+            step=1,
+            suffix=" °",
+            tooltip="Effect direction in whole degrees. Converted internally to DirectInput units.",
         )
 
-        self.duration = make_spinbox(
+        # User edits milliseconds; DirectInput receives microseconds.
+        self.duration_ms = make_spinbox(
             1,
-            0x7FFFFFFF,
-            min(default_duration, 0x7FFFFFFF),
-            step=1000,
-            suffix=" us",
-            tooltip="Effect duration in microseconds.",
+            2_147_483,
+            1000,
+            step=10,
+            suffix=" ms",
+            tooltip="Effect duration in milliseconds. Converted internally to microseconds.",
         )
 
         self.infinite_duration = QCheckBox("Infinite duration")
-        self.infinite_duration.setChecked(allow_infinite_duration and default_duration >= 0xFFFFFFFF)
-        self.infinite_duration.setEnabled(allow_infinite_duration)
+        self.infinite_duration.setChecked(False)
         self.infinite_duration.toggled.connect(self._sync_duration_enabled)
         self._sync_duration_enabled()
 
         layout = QFormLayout()
         layout.addRow("Axes", self.axis_mode)
-        layout.addRow("Direction", self.direction)
-        row = QHBoxLayout()
-        row.addWidget(self.duration)
-        if allow_infinite_duration:
-            row.addWidget(self.infinite_duration)
-        holder = QWidget()
-        holder.setLayout(row)
-        layout.addRow("Duration", holder)
+        layout.addRow("Direction", self.direction_deg)
+
+        duration_row = QHBoxLayout()
+        duration_row.addWidget(self.duration_ms)
+        duration_row.addWidget(self.infinite_duration)
+        duration_holder = QWidget()
+        duration_holder.setLayout(duration_row)
+        layout.addRow("Duration", duration_holder)
         self.setLayout(layout)
 
     def _sync_duration_enabled(self) -> None:
-        if self.infinite_duration.isEnabled() and self.infinite_duration.isChecked():
-            self.duration.setEnabled(False)
-        else:
-            self.duration.setEnabled(True)
+        self.duration_ms.setEnabled(not self.infinite_duration.isChecked())
 
     def axes_offsets(self) -> tuple[int, ...]:
         return (DIJOFS_X,) if self.axis_mode.currentIndex() == 0 else (DIJOFS_X, DIJOFS_Y)
 
+    def direction_hundredths_deg(self) -> int:
+        return int(self.direction_deg.value()) * 100
+
     def duration_us(self) -> int:
-        if self.infinite_duration.isEnabled() and self.infinite_duration.isChecked():
+        if self.infinite_duration.isChecked():
             return 0xFFFFFFFF
-        return int(self.duration.value())
+        return int(self.duration_ms.value()) * 1000
 
 
 class ConditionAxisControls(QWidget):
-    """One axis worth of DICONDITION parameters.
-
-    The wrapper supports per-axis dictionaries, so the GUI mirrors that by
-    exposing all values separately for axis 1 and axis 2.
-    """
-
     def __init__(self, title: str) -> None:
         super().__init__()
         self.offset = make_spinbox(-10000, 10000, 0, step=100)
@@ -313,20 +272,7 @@ class ConditionAxisControls(QWidget):
         }
 
 
-# -------------------------------------------------------------------------
-# Base tab class
-# -------------------------------------------------------------------------
-
 class EffectTab(QWidget):
-    """Base class used by all effect tabs.
-
-    The base class provides:
-    - a status label that tells the user whether the selected device claims
-      to support the effect type
-    - Start/Stop buttons
-    - a simple contract: subclasses implement create_effect()
-    """
-
     effect_name = "Effect"
 
     def __init__(self, window: "MainWindow", supported_guid: object) -> None:
@@ -342,6 +288,10 @@ class EffectTab(QWidget):
         self.stop_button = QPushButton("Stop")
         self.start_button.clicked.connect(self.start_effect)
         self.stop_button.clicked.connect(self.stop_effect)
+
+    @property
+    def common(self) -> SharedCommonControls:
+        return self.window.common_controls
 
     def is_supported(self) -> bool:
         ctx = self.window.ctx
@@ -402,16 +352,11 @@ class EffectTab(QWidget):
             self.window.show_exception(f"Failed to stop {self.effect_name}", exc)
 
 
-# -------------------------------------------------------------------------
-# Individual effect tabs
-# -------------------------------------------------------------------------
-
 class ConstantForceTab(EffectTab):
     effect_name = "Constant Force"
 
     def __init__(self, window: "MainWindow") -> None:
         super().__init__(window, GUID_ConstantForce)
-        self.common = CommonEffectControls(default_direction=0, default_duration=1_000_000)
         self.magnitude = make_spinbox(-10000, 10000, 5000, step=100)
 
         params = QFormLayout()
@@ -419,7 +364,6 @@ class ConstantForceTab(EffectTab):
 
         layout = QVBoxLayout()
         layout.addWidget(self.status_label)
-        layout.addWidget(wrap_group("Common", self.common.layout()))
         layout.addWidget(wrap_group("Constant force parameters", params))
         buttons = QHBoxLayout()
         buttons.addWidget(self.start_button)
@@ -432,7 +376,7 @@ class ConstantForceTab(EffectTab):
         return create_constant_force_effect(
             self.window.ctx.device,
             magnitude=int(self.magnitude.value()),
-            direction_hundredths_deg=int(self.common.direction.value()),
+            direction_hundredths_deg=self.common.direction_hundredths_deg(),
             duration_us=self.common.duration_us(),
             axes_offsets=self.common.axes_offsets(),
         )
@@ -443,7 +387,6 @@ class RampForceTab(EffectTab):
 
     def __init__(self, window: "MainWindow") -> None:
         super().__init__(window, GUID_RampForce)
-        self.common = CommonEffectControls(default_direction=0, default_duration=1_000_000, allow_infinite_duration=False)
         self.start_magnitude = make_spinbox(-10000, 10000, -2000, step=100)
         self.end_magnitude = make_spinbox(-10000, 10000, 6000, step=100)
 
@@ -453,7 +396,6 @@ class RampForceTab(EffectTab):
 
         layout = QVBoxLayout()
         layout.addWidget(self.status_label)
-        layout.addWidget(wrap_group("Common", self.common.layout()))
         layout.addWidget(wrap_group("Ramp parameters", params))
         buttons = QHBoxLayout()
         buttons.addWidget(self.start_button)
@@ -463,19 +405,19 @@ class RampForceTab(EffectTab):
         self.setLayout(layout)
 
     def create_effect(self) -> RampForceEffectHandle:
+        if self.common.infinite_duration.isChecked():
+            raise ValueError("Ramp force requires a finite duration.")
         return create_ramp_force_effect(
             self.window.ctx.device,
             start_magnitude=int(self.start_magnitude.value()),
             end_magnitude=int(self.end_magnitude.value()),
-            direction_hundredths_deg=int(self.common.direction.value()),
+            direction_hundredths_deg=self.common.direction_hundredths_deg(),
             duration_us=self.common.duration_us(),
             axes_offsets=self.common.axes_offsets(),
         )
 
 
 class PeriodicEffectTab(EffectTab):
-    """Shared UI for square/sine/triangle/sawtooth periodic effects."""
-
     def __init__(
         self,
         window: "MainWindow",
@@ -488,21 +430,27 @@ class PeriodicEffectTab(EffectTab):
         self.effect_name = effect_name
         self.factory = factory
 
-        self.common = CommonEffectControls(default_direction=0, default_duration=2_000_000)
         self.magnitude = make_spinbox(0, 10000, 5000, step=100)
         self.offset = make_spinbox(-10000, 10000, 0, step=100)
-        self.phase = make_spinbox(0, 35999, 0, step=100, suffix=" x0.01°")
-        self.period = make_spinbox(1, 10_000_000, 250_000, step=1000, suffix=" us")
+        # Whole degrees in UI; converted to hundredths internally.
+        self.phase_deg = make_spinbox(
+            0, 359, 0, step=1, suffix=" °",
+            tooltip="Phase in whole degrees. Converted internally to DirectInput units.",
+        )
+        # Milliseconds in UI; converted to microseconds internally.
+        self.period_ms = make_spinbox(
+            1, 10_000, 250, step=10, suffix=" ms",
+            tooltip="Period in milliseconds. Converted internally to microseconds.",
+        )
 
         params = QFormLayout()
         params.addRow("Magnitude", self.magnitude)
         params.addRow("Offset", self.offset)
-        params.addRow("Phase", self.phase)
-        params.addRow("Period", self.period)
+        params.addRow("Phase", self.phase_deg)
+        params.addRow("Period", self.period_ms)
 
         layout = QVBoxLayout()
         layout.addWidget(self.status_label)
-        layout.addWidget(wrap_group("Common", self.common.layout()))
         layout.addWidget(wrap_group(f"{self.effect_name} parameters", params))
         buttons = QHBoxLayout()
         buttons.addWidget(self.start_button)
@@ -516,21 +464,15 @@ class PeriodicEffectTab(EffectTab):
             self.window.ctx.device,
             magnitude=int(self.magnitude.value()),
             offset=int(self.offset.value()),
-            phase_hundredths_deg=int(self.phase.value()),
-            period_us=int(self.period.value()),
-            direction_hundredths_deg=int(self.common.direction.value()),
+            phase_hundredths_deg=int(self.phase_deg.value()) * 100,
+            period_us=int(self.period_ms.value()) * 1000,
+            direction_hundredths_deg=self.common.direction_hundredths_deg(),
             duration_us=self.common.duration_us(),
             axes_offsets=self.common.axes_offsets(),
         )
 
 
 class ConditionEffectTab(EffectTab):
-    """Shared UI for spring/damper/inertia/friction.
-
-    The underlying helper supports per-axis overrides, so the GUI surfaces
-    the complete DICONDITION structure for axis 1 and axis 2.
-    """
-
     def __init__(
         self,
         window: "MainWindow",
@@ -542,8 +484,6 @@ class ConditionEffectTab(EffectTab):
         super().__init__(window, supported_guid)
         self.effect_name = effect_name
         self.factory = factory
-
-        self.common = CommonEffectControls(default_direction=0, default_duration=0xFFFFFFFF, allow_infinite_duration=True)
 
         self.axis1 = ConditionAxisControls("Axis 1")
         self.axis2 = ConditionAxisControls("Axis 2")
@@ -560,7 +500,6 @@ class ConditionEffectTab(EffectTab):
 
         layout = QVBoxLayout()
         layout.addWidget(self.status_label)
-        layout.addWidget(wrap_group("Common", self.common.layout()))
         layout.addWidget(self.copy_axis1_to_axis2)
         layout.addLayout(axis_layout)
         buttons = QHBoxLayout()
@@ -587,32 +526,23 @@ class ConditionEffectTab(EffectTab):
 
         return self.factory(
             self.window.ctx.device,
-            direction_hundredths_deg=int(self.common.direction.value()),
+            direction_hundredths_deg=self.common.direction_hundredths_deg(),
             duration_us=self.common.duration_us(),
             axes_offsets=self.common.axes_offsets(),
             per_axis=per_axis,
         )
 
 
-# -------------------------------------------------------------------------
-# Main window
-# -------------------------------------------------------------------------
-
 class MainWindow(QMainWindow):
-    """Top-level application window.
-
-    This window owns the DirectInput device context and any currently active
-    effect. Tabs remain fairly passive and delegate all device lifecycle
-    responsibilities back to this object.
-    """
-
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("py_directinput_ffb - Effect Tester")
-        self.resize(1200, 900)
+        self.resize(1200, 920)
 
         self.ctx: Optional[DeviceContext] = None
         self.active_tab: Optional[EffectTab] = None
+
+        self.common_controls = SharedCommonControls()
 
         self.device_combo = QComboBox()
         self.device_combo.setMinimumWidth(500)
@@ -658,12 +588,13 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout()
         root.addLayout(top_bar)
         root.addWidget(self.device_status)
+        root.addWidget(wrap_group("Common parameters", self.common_controls.layout()))
         root.addWidget(self.tabs, 1)
-        root.addWidget(wrap_group("Log", QVBoxLayout()))
-        # Replace the placeholder group layout with the log widget.
-        log_group = root.itemAt(root.count() - 1).widget()
-        log_layout = log_group.layout()
+        log_group = QGroupBox("Log")
+        log_layout = QVBoxLayout()
         log_layout.addWidget(self.log_view)
+        log_group.setLayout(log_layout)
+        root.addWidget(log_group)
 
         container = QWidget()
         container.setLayout(root)
@@ -672,10 +603,6 @@ class MainWindow(QMainWindow):
         self.refresh_devices()
         self.refresh_tab_support()
 
-    # ------------------------------------------------------------------
-    # Logging and error display
-    # ------------------------------------------------------------------
-
     def log(self, text: str) -> None:
         self.log_view.appendPlainText(text)
 
@@ -683,10 +610,6 @@ class MainWindow(QMainWindow):
         self.log(f"{title}: {exc}")
         self.log(traceback.format_exc())
         QMessageBox.critical(self, title, f"{exc}\n\nSee the log pane for details.")
-
-    # ------------------------------------------------------------------
-    # Device lifecycle
-    # ------------------------------------------------------------------
 
     def refresh_devices(self) -> None:
         self.device_combo.clear()
@@ -706,7 +629,6 @@ class MainWindow(QMainWindow):
 
     def open_selected_device(self) -> None:
         self.close_device()
-
         data = self.device_combo.currentData()
         if data is None:
             QMessageBox.warning(self, "No device", "No force-feedback device is selected.")
@@ -717,13 +639,23 @@ class MainWindow(QMainWindow):
             devices = enum_devices(di, only_attached=True, only_force_feedback=True)
             selected = data
 
-            device = create_device(di, selected.guid_instance)
+            # Support either object-style or dict-style device items.
+            if hasattr(selected, "guid_instance"):
+                guid_instance = selected.guid_instance
+                product_name = selected.product_name
+                instance_name = selected.instance_name
+            else:
+                guid_instance = selected["guidInstance"]
+                product_name = selected["product_name"]
+                instance_name = selected["instance_name"]
+
+            device = create_device(di, guid_instance)
             hwnd = set_cooperative_level(device, exclusive=True, background=True)
             data_format = set_data_format(device)
             acquire(device)
 
             effects = enum_effects(device)
-            supported_guid_strings = {guid_str(e.guid) for e in effects}
+            supported_guid_strings = {guid_str(e.guid if hasattr(e, "guid") else e["guid"]) for e in effects}
 
             self.ctx = DeviceContext(
                 di=di,
@@ -735,13 +667,15 @@ class MainWindow(QMainWindow):
             )
 
             self.device_status.setText(
-                f"Opened: {selected.product_name} / {selected.instance_name} "
+                f"Opened: {product_name} / {instance_name} "
                 f"({len(effects)} effect type(s) reported)"
             )
             self.device_status.setStyleSheet("font-weight: bold; color: #2e8b57;")
-            self.log(f"Opened device: {selected.product_name} / {selected.instance_name}")
+            self.log(f"Opened device: {product_name} / {instance_name}")
             for eff in effects:
-                self.log(f"  Supports: {eff.name} ({eff.guid})")
+                name = eff.name if hasattr(eff, "name") else eff["name"]
+                guid = eff.guid if hasattr(eff, "guid") else eff["guid"]
+                self.log(f"  Supports: {name} ({guid})")
 
             self.refresh_tab_support()
         except Exception as exc:
@@ -781,18 +715,10 @@ class MainWindow(QMainWindow):
         for tab in self.effect_tabs:
             tab.refresh_support_state()
 
-    # ------------------------------------------------------------------
-    # Qt event hooks
-    # ------------------------------------------------------------------
-
-    def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming convention
+    def closeEvent(self, event) -> None:  # noqa: N802
         self.close_device()
         super().closeEvent(event)
 
-
-# -------------------------------------------------------------------------
-# Entrypoint
-# -------------------------------------------------------------------------
 
 def main() -> int:
     app = QApplication(sys.argv)
