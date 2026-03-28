@@ -1,4 +1,4 @@
-# <img src="icon/logo.jpg" alt="py_directinput_ffb" width="64"/> py_directinput_ffb
+# <img src="icon/logo.jpg" alt="py_directinput_ffb" width="128"/> py_directinput_ffb
 
 A Python binding for **DirectInput Force Feedback (FFB)** using `ctypes` and `comtypes`.
 
