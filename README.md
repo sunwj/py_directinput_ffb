@@ -1,6 +1,4 @@
-# directinput_ffb: refactored DirectInput force-feedback Python binding
-
-This refactor splits the original single-file script into smaller modules:
+# py_directinput_ffb: DirectInput force-feedback Python binding
 
 - `dinput_types.py` — base Win32 and COM type aliases, DLL loading, raw Win32 bindings
 - `dinput_definitions.py` — DirectInput constants, structures, GUIDs, and COM interfaces
@@ -18,8 +16,7 @@ python main.py
 
 ## Notes
 
-The refactor preserves the behaviour of the working original, but reorganizes it
-for readability and maintenance. The comments are intentionally detailed because
+The comments are intentionally detailed because
 DirectInput + `ctypes` + `comtypes` is unusually sensitive to:
 
 - exact COM vtable order
@@ -46,11 +43,6 @@ DirectInput + `ctypes` + `comtypes` is unusually sensitive to:
 
 The periodic helpers share the same parameters (`magnitude`, `offset`, `phase_hundredths_deg`, `period_us`, `duration_us`).
 The condition helpers share the same parameters (`positive_coefficient`, `negative_coefficient`, `positive_saturation`, `negative_saturation`, `dead_band`, `offset`, `duration_us`, and optional `per_axis`).
-
-
-## Package name
-
-The package now uses the name `directinput_ffb`, which is more descriptive than the original working filename and makes its purpose immediately clear: a DirectInput-based force-feedback binding for Python.
 
 ## Demo
 
