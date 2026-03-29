@@ -49,6 +49,7 @@ from .dinput_definitions import (
     DIEB_NOTRIGGER,
     DIEFF_OBJECTOFFSETS,
     DIEFF_POLAR,
+    DIEFF_CARTESIAN,
     DIEP_TYPESPECIFICPARAMS,
     DIEP_START,
 )

@@ -48,7 +48,10 @@ from .dinput_definitions import (
     LPDIENUMEFFECTSCALLBACKW,
     EnumeratedDevice,
     EnumeratedEffect,
-    EnumeratedDeviceObjectInfo
+    EnumeratedDeviceObjectInfo,
+    DIJOFS_X,
+    DIJOFS_Y,
+    DIJOFS_Z
 )
 
 
@@ -171,21 +174,22 @@ def enum_device_objects(device, flags: int = DIDFT_ALL) -> list[EnumeratedDevice
 
 
 def enum_ffb_axes_actuator_offsets(device):
-    axes_offset = []
+    axes_offsets = []
 
     def _cb(lpobj, _pvref):
         obj = lpobj.contents
         obj_type = int(obj.dwType)
 
         if bool(obj_type & DIDFT_AXIS) and bool(obj_type & DIDFT_FFACTUATOR):
-            axes_offset.append(int(obj.dwOfs))
+            axes_offsets.append(int(obj.dwOfs))
         
         return DIENUM_CONTINUE
 
     cb = LPDIENUMDEVICEOBJECTSCALLBACKW(_cb)
     _object_enum_callbacks.append(cb)
     device.EnumObjects(cb, None, DIDFT_AXIS | DIDFT_FFACTUATOR)
-    return axes_offset
+
+    return axes_offsets
 
 
 def create_direct_input() -> POINTER(IDirectInput8W):

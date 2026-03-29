@@ -1,12 +1,24 @@
-
 """
 PyQt6 GUI for testing DirectInput force-feedback effects with py_directinput_ffb.
 
-This version keeps the common effect parameters shared across tabs so the
-values do not change when switching between effect types. It also exposes
+This patched version keeps the common effect parameters shared across tabs so
+the values do not change when switching between effect types. It also exposes
 direction and phase in whole degrees for usability while converting them to
 DirectInput's hundredths-of-a-degree units internally. Duration and period
 are edited in milliseconds and converted to microseconds internally.
+
+Patch notes for 1-axis mode
+---------------------------
+This version changes the GUI behavior in 1-axis mode:
+
+- the angle-based direction widget is disabled
+- a Positive/Negative sign selector is enabled
+- constant and ramp effects encode 1-axis direction via the sign of magnitude
+- periodic effects keep magnitude positive and use the sign selector to bias offset
+- condition effects still use the package API exactly as before
+
+This GUI patch assumes the package-side 1-axis effect creation has also been
+fixed to use DIEFF_CARTESIAN with rglDirection = (0,) for single-axis effects.
 """
 
 from __future__ import annotations
@@ -35,10 +47,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-# -------------------------------------------------------------------------
-# Package imports
-# -------------------------------------------------------------------------
-
 try:
     from directinput_ffb.dinput_api import (
         create_direct_input,
@@ -49,6 +57,7 @@ try:
         acquire,
         unacquire,
         enum_effects,
+        enum_ffb_axes_actuator_offsets
     )
     from directinput_ffb.dinput_effects import (
         EffectHandle,
@@ -84,7 +93,7 @@ try:
         DIJOFS_Y,
     )
 except ImportError:
-    from directinput_ffb.dinput_api import (
+    from py_directinput_ffb.dinput_api import (
         create_direct_input,
         enum_devices,
         create_device,
@@ -92,9 +101,9 @@ except ImportError:
         set_data_format,
         acquire,
         unacquire,
-        enum_effects,
+        enum_effects
     )
-    from directinput_ffb.dinput_effects import (
+    from py_directinput_ffb.dinput_effects import (
         EffectHandle,
         ConstantForceEffectHandle,
         RampForceEffectHandle,
@@ -112,7 +121,7 @@ except ImportError:
         create_inertia_effect,
         create_friction_effect,
     )
-    from directinput_ffb.dinput_definitions import (
+    from py_directinput_ffb.dinput_definitions import (
         GUID_ConstantForce,
         GUID_RampForce,
         GUID_Square,
@@ -169,37 +178,38 @@ def wrap_group(title: str, layout) -> QGroupBox:
 
 
 class SharedCommonControls(QWidget):
-    """
-    Common parameters shared by all effect tabs.
-
-    These widgets live once in the main window, not once per tab. That keeps
-    their values stable when switching tabs.
-    """
-
     def __init__(self) -> None:
         super().__init__()
 
         self.axis_mode = QComboBox()
         self.axis_mode.addItems([
-            "1 axis (X)",
-            "2 axes (X,Y)",
+            "1 axis",
+            "2 axes",
         ])
         self.axis_mode.setToolTip(
-            "Choose whether the effect should be created on only the X axis "
-            "or on both X and Y."
+            "Choose whether the effect should be created on one actuator axis "
+            "or on two actuator axes."
         )
 
-        # User edits whole degrees; DirectInput receives hundredths of degrees.
         self.direction_deg = make_spinbox(
             0,
             359,
             0,
             step=1,
             suffix=" °",
-            tooltip="Effect direction in whole degrees. Converted internally to DirectInput units.",
+            tooltip="Direction angle used only in 2-axis mode.",
         )
 
-        # User edits milliseconds; DirectInput receives microseconds.
+        self.single_axis_sign = QComboBox()
+        self.single_axis_sign.addItems([
+            "Positive",
+            "Negative",
+        ])
+        self.single_axis_sign.setToolTip(
+            "Used only in 1-axis mode. Positive means positive force on the "
+            "selected axis; negative means reverse force."
+        )
+
         self.duration_ms = make_spinbox(
             1,
             2_147_483,
@@ -212,11 +222,12 @@ class SharedCommonControls(QWidget):
         self.infinite_duration = QCheckBox("Infinite duration")
         self.infinite_duration.setChecked(False)
         self.infinite_duration.toggled.connect(self._sync_duration_enabled)
-        self._sync_duration_enabled()
+        self.axis_mode.currentIndexChanged.connect(self._sync_axis_mode_ui)
 
         layout = QFormLayout()
         layout.addRow("Axes", self.axis_mode)
         layout.addRow("Direction", self.direction_deg)
+        layout.addRow("1-axis sign", self.single_axis_sign)
 
         duration_row = QHBoxLayout()
         duration_row.addWidget(self.duration_ms)
@@ -226,14 +237,32 @@ class SharedCommonControls(QWidget):
         layout.addRow("Duration", duration_holder)
         self.setLayout(layout)
 
+        self._sync_duration_enabled()
+        self._sync_axis_mode_ui()
+
     def _sync_duration_enabled(self) -> None:
         self.duration_ms.setEnabled(not self.infinite_duration.isChecked())
+
+    def _sync_axis_mode_ui(self) -> None:
+        is_single_axis = self.axis_mode.currentIndex() == 0
+        self.direction_deg.setEnabled(not is_single_axis)
+        self.single_axis_sign.setEnabled(is_single_axis)
 
     def axes_offsets(self) -> tuple[int, ...]:
         return (DIJOFS_X,) if self.axis_mode.currentIndex() == 0 else (DIJOFS_X, DIJOFS_Y)
 
+    def is_single_axis(self) -> bool:
+        return self.axis_mode.currentIndex() == 0
+
     def direction_hundredths_deg(self) -> int:
+        if self.is_single_axis():
+            return 0
         return int(self.direction_deg.value()) * 100
+
+    def signed_magnitude(self, magnitude: int) -> int:
+        if not self.is_single_axis():
+            return magnitude
+        return magnitude if self.single_axis_sign.currentIndex() == 0 else -magnitude
 
     def duration_us(self) -> int:
         if self.infinite_duration.isChecked():
@@ -373,9 +402,10 @@ class ConstantForceTab(EffectTab):
         self.setLayout(layout)
 
     def create_effect(self) -> ConstantForceEffectHandle:
+        magnitude = self.common.signed_magnitude(int(self.magnitude.value()))
         return create_constant_force_effect(
             self.window.ctx.device,
-            magnitude=int(self.magnitude.value()),
+            magnitude=magnitude,
             direction_hundredths_deg=self.common.direction_hundredths_deg(),
             duration_us=self.common.duration_us(),
             axes_offsets=self.common.axes_offsets(),
@@ -407,10 +437,18 @@ class RampForceTab(EffectTab):
     def create_effect(self) -> RampForceEffectHandle:
         if self.common.infinite_duration.isChecked():
             raise ValueError("Ramp force requires a finite duration.")
+
+        start_magnitude = int(self.start_magnitude.value())
+        end_magnitude = int(self.end_magnitude.value())
+
+        if self.common.is_single_axis():
+            start_magnitude = self.common.signed_magnitude(start_magnitude)
+            end_magnitude = self.common.signed_magnitude(end_magnitude)
+
         return create_ramp_force_effect(
             self.window.ctx.device,
-            start_magnitude=int(self.start_magnitude.value()),
-            end_magnitude=int(self.end_magnitude.value()),
+            start_magnitude=start_magnitude,
+            end_magnitude=end_magnitude,
             direction_hundredths_deg=self.common.direction_hundredths_deg(),
             duration_us=self.common.duration_us(),
             axes_offsets=self.common.axes_offsets(),
@@ -432,16 +470,17 @@ class PeriodicEffectTab(EffectTab):
 
         self.magnitude = make_spinbox(0, 10000, 5000, step=100)
         self.offset = make_spinbox(-10000, 10000, 0, step=100)
-        # Whole degrees in UI; converted to hundredths internally.
         self.phase_deg = make_spinbox(
             0, 359, 0, step=1, suffix=" °",
             tooltip="Phase in whole degrees. Converted internally to DirectInput units.",
         )
-        # Milliseconds in UI; converted to microseconds internally.
         self.period_ms = make_spinbox(
             1, 10_000, 250, step=10, suffix=" ms",
             tooltip="Period in milliseconds. Converted internally to microseconds.",
         )
+
+        self.common.axis_mode.currentIndexChanged.connect(self._sync_phase_ui)
+        self._sync_phase_ui()
 
         params = QFormLayout()
         params.addRow("Magnitude", self.magnitude)
@@ -459,11 +498,21 @@ class PeriodicEffectTab(EffectTab):
         layout.addStretch()
         self.setLayout(layout)
 
+    def _sync_phase_ui(self) -> None:
+        self.phase_deg.setEnabled(not self.common.is_single_axis())
+
     def create_effect(self) -> PeriodicEffectHandle:
+        magnitude = int(self.magnitude.value())
+        offset = int(self.offset.value())
+
+        if self.common.is_single_axis():
+            magnitude = abs(magnitude)
+            offset = -abs(offset) if self.common.single_axis_sign.currentIndex() == 1 else abs(offset)
+
         return self.factory(
             self.window.ctx.device,
-            magnitude=int(self.magnitude.value()),
-            offset=int(self.offset.value()),
+            magnitude=magnitude,
+            offset=offset,
             phase_hundredths_deg=int(self.phase_deg.value()) * 100,
             period_us=int(self.period_ms.value()) * 1000,
             direction_hundredths_deg=self.common.direction_hundredths_deg(),
@@ -609,7 +658,7 @@ class MainWindow(QMainWindow):
     def show_exception(self, title: str, exc: Exception) -> None:
         self.log(f"{title}: {exc}")
         self.log(traceback.format_exc())
-        QMessageBox.critical(self, title, f"{exc}\n\nSee the log pane for details.")
+        QMessageBox.critical(self, title, f"{exc} See the log pane for details.")
 
     def refresh_devices(self) -> None:
         self.device_combo.clear()
@@ -619,7 +668,10 @@ class MainWindow(QMainWindow):
             devices = enum_devices(di, only_attached=True, only_force_feedback=True)
             self._enumerated_devices = devices
             for dev in devices:
-                label = f"{dev.product_name} / {dev.instance_name}"
+                try:
+                    label = f"{dev.product_name} / {dev.instance_name}"
+                except AttributeError:
+                    label = f"{dev['product_name']} / {dev['instance_name']}"
                 self.device_combo.addItem(label, dev)
             if not devices:
                 self.device_combo.addItem("No force-feedback devices found", None)
@@ -639,7 +691,6 @@ class MainWindow(QMainWindow):
             devices = enum_devices(di, only_attached=True, only_force_feedback=True)
             selected = data
 
-            # Support either object-style or dict-style device items.
             if hasattr(selected, "guid_instance"):
                 guid_instance = selected.guid_instance
                 product_name = selected.product_name
@@ -729,8 +780,8 @@ def main() -> int:
     QMessageBox.information(
         win,
         "Safety warning",
-        "Force-feedback devices can move suddenly and strongly.\n\n"
-        "Start with low values and keep hands clear while testing.\n\n"
+        "Force-feedback devices can move suddenly and strongly."
+        "Start with low values and keep hands clear while testing."
         "Use at your own risk.",
     )
     return app.exec()

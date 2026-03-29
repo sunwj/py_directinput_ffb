@@ -110,7 +110,7 @@ def demo() -> None:
 
     print("Enumerating device object information...")
     obj_infos = enum_device_objects(device, DIDFT_AXIS | DIDFT_FFACTUATOR)
-    for obj_info in obj_infos: print(f'{obj_info.name}, {obj_info.offset}, {hex(obj_info.type_flags)}, is_axis: {obj_info.is_axis}, is_actuator: {obj_info.is_ff_actuator}')
+    for obj_info in obj_infos: print(f'{obj_info.guid_type}, {obj_info.name}, {obj_info.offset}, {hex(obj_info.type_flags)}, is_axis: {obj_info.is_axis}, is_actuator: {obj_info.is_ff_actuator}')
 
     axes_offsets = enum_ffb_axes_actuator_offsets(device)
 
@@ -129,7 +129,7 @@ def demo() -> None:
                 lambda: create_constant_force_effect(
                     device,
                     magnitude=6000,
-                    direction_hundredths_deg=18000,
+                    direction_hundredths_deg=0,
                     duration_us=900_000,
                     axes_offsets=axes_offsets,
                 ),
