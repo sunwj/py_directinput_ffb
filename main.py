@@ -119,7 +119,7 @@ def demo() -> None:
     y_lmin, y_lmax = get_axis_logical_range(device, DIJOFS_Y)
     print(f"logical range X: [{x_lmin, x_lmax}], logical range Y: [{y_lmin, y_lmax}]")
 
-    print("Set axis range")
+    print("Set axis range...")
     set_axis_range(device, DIJOFS_X, x_lmin, x_lmax)
     set_axis_range(device, DIJOFS_Y, y_lmin, y_lmax)
 

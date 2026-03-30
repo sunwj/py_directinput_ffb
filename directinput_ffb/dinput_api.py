@@ -175,7 +175,7 @@ def enum_device_objects(device, flags: int = DIDFT_ALL) -> list[EnumeratedDevice
         return DIENUM_CONTINUE
 
     cb = LPDIENUMDEVICEOBJECTSCALLBACKW(_cb)
-    _object_enum_callbacks.append(cb)
+    # _object_enum_callbacks.append(cb)
     device.EnumObjects(cb, None, flags)
     return results
 
@@ -193,7 +193,7 @@ def enum_ffb_axes_actuator_offsets(device):
         return DIENUM_CONTINUE
 
     cb = LPDIENUMDEVICEOBJECTSCALLBACKW(_cb)
-    _object_enum_callbacks.append(cb)
+    # _object_enum_callbacks.append(cb)
     device.EnumObjects(cb, None, DIDFT_AXIS | DIDFT_FFACTUATOR)
 
     return axes_offsets
@@ -250,7 +250,7 @@ def enum_devices(
         return DIENUM_CONTINUE
 
     cb = LPDIENUMDEVICESCALLBACKW(_cb)
-    _device_enum_callbacks.append(cb)
+    # _device_enum_callbacks.append(cb)
 
     hr = di.EnumDevices(DI8DEVCLASS_GAMECTRL, cb, None, flags)
     check_hr(hr, "IDirectInput8W.EnumDevices")
@@ -404,7 +404,7 @@ def enum_effects(device: POINTER(IDirectInputDevice8W)) -> List[EnumeratedEffect
         return DIENUM_CONTINUE
 
     cb = LPDIENUMEFFECTSCALLBACKW(_cb)
-    _effect_enum_callbacks.append(cb)
+    # _effect_enum_callbacks.append(cb)
 
     hr = device.EnumEffects(cb, None, 0)
     check_hr(hr, "IDirectInputDevice8W.EnumEffects")
