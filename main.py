@@ -24,6 +24,8 @@ from typing import Callable
 
 from directinput_ffb.dinput_types import kernel32
 from directinput_ffb.dinput_definitions import (
+    C,
+    DIJOYSTATE,
     DIDFT_AXIS,
     DIDFT_FFACTUATOR,
     DIJOFS_X,
@@ -39,8 +41,13 @@ from directinput_ffb.dinput_definitions import (
     GUID_Damper,
     GUID_Inertia,
     GUID_Friction,
+    DIPROP_LOGICALRANGE,
+    DIPROPHEADER,
+    DIPROPRANGE,
+    DIPH_BYOFFSET
 )
 from directinput_ffb import (
+    check_hr,
     create_direct_input,
     enum_device_objects,
     enum_ffb_axes_actuator_offsets,
@@ -62,6 +69,8 @@ from directinput_ffb import (
     create_damper_effect,
     create_inertia_effect,
     create_friction_effect,
+    get_axis_logical_range,
+    set_axis_range
 )
 
 
@@ -104,6 +113,15 @@ def demo() -> None:
 
     print("Setting data format...")
     data_format = set_data_format(device)
+
+    print("Get axis logical range")
+    x_lmin, x_lmax = get_axis_logical_range(device, DIJOFS_X)
+    y_lmin, y_lmax = get_axis_logical_range(device, DIJOFS_Y)
+    print(f"logical range X: [{x_lmin, x_lmax}], logical range Y: [{y_lmin, y_lmax}]")
+
+    print("Set axis range")
+    set_axis_range(device, DIJOFS_X, x_lmin, x_lmax)
+    set_axis_range(device, DIJOFS_Y, y_lmin, y_lmax)
 
     print("Acquiring device...")
     acquire(device)
@@ -276,6 +294,10 @@ def demo() -> None:
 
         print("Playing each supported standard effect once...")
         for display_name, guid, builder in effect_builders:
+            dev_state = DIJOYSTATE()
+            device.Poll()
+            device.GetDeviceState(C.sizeof(DIJOYSTATE), C.byref(dev_state))
+            print(dev_state)
             if _guid_text(guid) not in supported_guids:
                 print(f"Skipping: {display_name} (not reported by device)")
                 continue

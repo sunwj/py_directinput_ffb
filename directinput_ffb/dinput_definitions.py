@@ -126,6 +126,9 @@ DIJOFS_SLIDER1 = 28
 # DirectInput data-format object classification flags
 # ---------------------------------------------------------------------------
 
+DIDF_ABSAXIS = 0x00000001
+DIDF_RELAXIS = 0x00000002
+
 DIDFT_RELAXIS = 0x00000001
 DIDFT_ABSAXIS = 0x00000002
 DIDFT_AXIS = 0x00000003
@@ -146,7 +149,16 @@ DIDFT_FFACTUATOR = 0x01000000
 DIDFT_OUTPUT = 0x10000000
 
 # ---------------------------------------------------------------------------
-# IIDs and standard object/effect GUIDs
+# How to Get/Set device properties
+# ---------------------------------------------------------------------------
+
+DIPH_DEVICE = 0
+DIPH_BYOFFSET = 1
+DIPH_BYID = 2
+DIPH_BYUSAGE = 3
+
+# ---------------------------------------------------------------------------
+# GUIDs
 # ---------------------------------------------------------------------------
 
 IID_IDirectInput8W = GUID("{BF798031-483A-4DA2-AA99-5D64ED369700}")
@@ -174,6 +186,14 @@ GUID_RyAxis = GUID("{A36D02F5-C9F3-11CF-BFC7-444553540000}")
 GUID_RzAxis = GUID("{A36D02E3-C9F3-11CF-BFC7-444553540000}")
 GUID_Slider = GUID("{A36D02E4-C9F3-11CF-BFC7-444553540000}")
 GUID_POV = GUID("{A36D02F2-C9F3-11CF-BFC7-444553540000}")
+
+
+def MAKEDIPROP(prop: int):
+    return C.c_void_p(prop)
+
+DIPROP_RANGE = MAKEDIPROP(4)
+DIPROP_PHYSICALRANGE = MAKEDIPROP(18)
+DIPROP_LOGICALRANGE = MAKEDIPROP(19)
 
 # ---------------------------------------------------------------------------
 # Helpful pure-Python model objects
@@ -388,20 +408,48 @@ class DIDATAFORMAT(C.Structure):
     ]
 
 
-class MiniJoystickState(C.Structure):
-    """Minimal application state buffer for a two-axis joystick format.
+class DIJOYSTATE(C.Structure):
+    """state buffer for a two-axis joystick format.
 
     ``SetDataFormat`` does not describe the device's internal memory layout.
     It describes the layout *our application* expects when polling the device.
     The ``dwOfs`` values in ``DIOBJECTDATAFORMAT`` therefore point into this
     structure's fields.
     """
-
     _fields_ = [
         ("lX", LONG),
         ("lY", LONG),
+        ("lZ", LONG),
+        ("lRx", LONG),
+        ("lRy", LONG),
+        ("lRz", LONG),
+        ("rglSlider", LONG * 2),
+        ("rgdwPOV", DWORD * 4),
+        ("rgbButtons", C.c_ubyte * 32),
     ]
 
+    def __str__(self):
+        return f'lX: {self.lX}, lY: {self.lY}'
+
+
+# ---------------------------------------------------------------------------
+# For device properties
+# ---------------------------------------------------------------------------
+
+class DIPROPHEADER(C.Structure):
+    _fields_ = [
+        ("dwSize", DWORD),
+        ("dwHeaderSize", DWORD),
+        ("dwObj", DWORD),
+        ("dwHow", DWORD),
+    ]
+
+class DIPROPRANGE(C.Structure):
+    _fields_ = [
+        ("diph", DIPROPHEADER),
+        ("lMin", LONG),
+        ("lMax", LONG),
+    ]
 
 # ---------------------------------------------------------------------------
 # Callback prototypes
@@ -461,16 +509,16 @@ class IDirectInputDevice8W(IUnknown):
                   (["in"], LPVOID, "pvRef"),
                   (["in"], DWORD, "dwFlags")),
         COMMETHOD([], HRESULT, "GetProperty",
-                  (["in"], REFGUID, "rguidProp"),
-                  (["in", "out"], LPVOID, "pdiph")),
+                  (["in"], LPVOID, "rguidProp"),
+                  (["in"], LPVOID, "pdiph")),
         COMMETHOD([], HRESULT, "SetProperty",
-                  (["in"], REFGUID, "rguidProp"),
+                  (["in"], LPVOID, "rguidProp"),
                   (["in"], LPVOID, "pdiph")),
         COMMETHOD([], HRESULT, "Acquire"),
         COMMETHOD([], HRESULT, "Unacquire"),
         COMMETHOD([], HRESULT, "GetDeviceState",
                   (["in"], DWORD, "cbData"),
-                  (["out"], LPVOID, "lpvData")),
+                  (["in"], LPVOID, "lpvData")),
         COMMETHOD([], HRESULT, "GetDeviceData",
                   (["in"], DWORD, "cbObjectData"),
                   (["out"], LPVOID, "rgdod"),
@@ -600,9 +648,11 @@ __all__ = [name for name in globals() if name.isupper() or name.startswith("IDir
     "DIEFFECT",
     "DIOBJECTDATAFORMAT",
     "DIDATAFORMAT",
-    "MiniJoystickState",
+    "DIJOYSTATE",
     "LPDIENUMDEVICESCALLBACKW",
     "LPDIENUMEFFECTSCALLBACKW",
     "LPDIDEVICEOBJECTINSTANCEW",
     "LPDIENUMDEVICEOBJECTSCALLBACKW",
+    "DIPROPHEADER",
+    "DIPROPRANGE"
 }]

@@ -42,7 +42,7 @@ from .dinput_definitions import (
     DIDOI_ASPECTPOSITION,
     DIOBJECTDATAFORMAT,
     DIDATAFORMAT,
-    MiniJoystickState,
+    DIJOYSTATE,
     LPDIENUMDEVICEOBJECTSCALLBACKW,
     LPDIENUMDEVICESCALLBACKW,
     LPDIENUMEFFECTSCALLBACKW,
@@ -51,7 +51,14 @@ from .dinput_definitions import (
     EnumeratedDeviceObjectInfo,
     DIJOFS_X,
     DIJOFS_Y,
-    DIJOFS_Z
+    DIJOFS_Z,
+    DIDF_ABSAXIS,
+    DIPROPHEADER,
+    DIPROPRANGE,
+    DIPH_BYOFFSET,
+    DIPROP_RANGE,
+    DIPROP_LOGICALRANGE,
+    DIPROP_PHYSICALRANGE
 )
 
 
@@ -300,7 +307,7 @@ def set_cooperative_level(
     return hwnd
 
 
-def build_minimal_xy_data_format() -> DIDATAFORMAT:
+def build_joystick_data_format() -> DIDATAFORMAT:
     """Build a minimal application data format for X/Y joystick axes.
 
     This format is intentionally small because the original working script only
@@ -317,19 +324,19 @@ def build_minimal_xy_data_format() -> DIDATAFORMAT:
 
     objs[0].pguid = C.pointer(GUID_XAxis)
     objs[0].dwOfs = 0
-    objs[0].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL
+    objs[0].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE
     objs[0].dwFlags = DIDOI_ASPECTPOSITION
 
     objs[1].pguid = C.pointer(GUID_YAxis)
     objs[1].dwOfs = 4
-    objs[1].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL
+    objs[1].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE
     objs[1].dwFlags = DIDOI_ASPECTPOSITION
 
     data_format = DIDATAFORMAT()
     data_format.dwSize = C.sizeof(DIDATAFORMAT)
     data_format.dwObjSize = C.sizeof(DIOBJECTDATAFORMAT)
-    data_format.dwFlags = 0
-    data_format.dwDataSize = C.sizeof(MiniJoystickState)
+    data_format.dwFlags = DIDF_ABSAXIS
+    data_format.dwDataSize = C.sizeof(DIJOYSTATE)
     data_format.dwNumObjs = 2
     data_format.rgodf = objs
 
@@ -352,7 +359,7 @@ def set_data_format(
     """
 
     if data_format is None:
-        data_format = build_minimal_xy_data_format()
+        data_format = build_joystick_data_format()
 
     hr = device.SetDataFormat(C.byref(data_format))
     check_hr(hr, "IDirectInputDevice8W.SetDataFormat")
@@ -402,3 +409,46 @@ def enum_effects(device: POINTER(IDirectInputDevice8W)) -> List[EnumeratedEffect
     hr = device.EnumEffects(cb, None, 0)
     check_hr(hr, "IDirectInputDevice8W.EnumEffects")
     return effects
+
+# ---------------------------------------------------------------------------
+# Get/Set property
+# ---------------------------------------------------------------------------
+
+
+def _get_axis_range(device: POINTER(IDirectInputDevice8W), axis_offset: int, rguid_prop: C.c_void_p) -> List[int, int]:
+    prop = DIPROPRANGE()
+    prop.diph.dwSize = C.sizeof(DIPROPRANGE)
+    prop.diph.dwHeaderSize = C.sizeof(DIPROPHEADER)
+    prop.diph.dwObj = axis_offset
+    prop.diph.dwHow = DIPH_BYOFFSET
+
+    hr = device.GetProperty(rguid_prop, C.byref(prop))
+    check_hr(hr, f"GetProperty(DIPROP_LOGICALRANGE, offset={axis_offset})") 
+
+    return [int(prop.lMin), int(prop.lMax)]
+
+
+def get_axis_logical_range(device: POINTER(IDirectInputDevice8W), axis_offset: int) -> List[int, int]:
+    return _get_axis_range(device, axis_offset, DIPROP_LOGICALRANGE)
+
+
+def get_axis_physical_range(device: POINTER(IDirectInputDevice8W), axis_offset: int) -> List[int, int]:
+    return _get_axis_range(device, axis_offset, DIPROP_PHYSICALRANGE)
+
+
+def get_axis_range(device: POINTER(IDirectInputDevice8W), axis_offset: int) -> List[int, int]:
+    return _get_axis_range(device, axis_offset, DIPROP_RANGE)
+
+
+def set_axis_range(device: POINTER(IDirectInputDevice8W), axis_offset: int, range_min: int, range_max: int):
+    assert range_max > range_min
+    prop = DIPROPRANGE()
+    prop.diph.dwSize = C.sizeof(DIPROPRANGE)
+    prop.diph.dwHeaderSize = C.sizeof(DIPROPHEADER)
+    prop.diph.dwObj = axis_offset
+    prop.diph.dwHow = DIPH_BYOFFSET
+    prop.lMin = range_min
+    prop.lMax = range_max
+
+    hr = device.SetProperty(DIPROP_RANGE, C.byref(prop))
+    check_hr(hr, f"SetProperty(DIPROP_LOGICALRANGE, offset={axis_offset})") 

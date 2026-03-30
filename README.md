@@ -1,4 +1,8 @@
-# <img src="icon/logo.jpg" alt="py_directinput_ffb" width="128"/> py_directinput_ffb
+<div align="center">
+  <img src="icon/logo.jpg" alt="py_directinput_ffb" width="512"/>
+</div>
+
+---
 
 A Python binding for **DirectInput Force Feedback (FFB)** using `ctypes` and `comtypes`.
 
@@ -90,79 +94,17 @@ pip install comtypes
 
 ---
 
-## 🚀 Quick Example
-
-```python
-from directinput_ffb.dinput_api import create_direct_input, enum_devices, create_device
-from directinput_ffb.dinput_effects import create_constant_force_effect
-
-# Initialize DirectInput
-di = create_direct_input()
-
-# Find force feedback devices
-devices = enum_devices(di, only_attached=True, only_force_feedback=True)
-
-# Open first device
-device = create_device(di, devices[0]["guidInstance"])
-
-# Setup device
-device.SetDataFormat(...)
-device.SetCooperativeLevel(...)
-device.Acquire()
-
-# Create a constant force effect
-effect = create_constant_force_effect(
-    device,
-    magnitude=6000,
-    direction_hundredths_deg=18000,
-    duration_us=2_000_000,
-)
-
-effect.download()
-effect.start()
-
-# Stop after use
-effect.stop()
-effect.unload()
-device.Unacquire()
-```
-
----
-
-## 🎛️ Supported Force Effects
-
-### Constant Force
-Applies a steady force in a given direction.
-
-### Ramp Force
-Linearly transitions from one magnitude to another.
-
-### Periodic Effects
-Oscillating forces:
-- Sine
-- Square
-- Triangle
-- Sawtooth Up / Down
-
-### Condition Effects
-Physics-like constraints:
-- Spring (centering force)
-- Damper (resistance to velocity)
-- Inertia (mass simulation)
-- Friction (static resistance)
-
----
-
 ## 🧱 Architecture Overview
 
 ```
 directinput_ffb/
 │
-├── dinput_types.py        # Low-level Win32 + ctypes types
-├── dinput_definitions.py  # DirectInput constants, GUIDs, structures, COM interfaces
-├── dinput_api.py          # Device management and setup
-├── dinput_effects.py      # Force effect creation and control
-├── main.py                # Demo: play supported effects
+├── dinput_types.py                       # Low-level Win32 + ctypes types
+├── dinput_definitions.py                 # DirectInput constants, GUIDs, structures, COM interfaces
+├── dinput_api.py                         # Device management and setup
+├── dinput_effects.py                     # Force effect creation and control
+├── main.py                               # Demo: play supported effects
+├── py_directinput_ffb_gui_tester.py      # Demo: PyQt6 GUI for testing DirectInput force-feedback effects
 ```
 
 ### Key Concepts
@@ -192,6 +134,12 @@ Run the built-in demo to test all supported effects:
 
 ```bash
 python main.py
+```
+
+Run the GUI to test all supported effects:
+
+```bash
+python py_directinput_ffb_gui_tester.py
 ```
 
 This will:

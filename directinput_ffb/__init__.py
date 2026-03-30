@@ -12,6 +12,7 @@ The package is intentionally split into layers:
 """
 
 from .dinput_api import (
+    check_hr,
     create_direct_input,
     enum_devices,
     create_device,
@@ -21,7 +22,10 @@ from .dinput_api import (
     unacquire,
     enum_effects,
     enum_device_objects,
-    enum_ffb_axes_actuator_offsets
+    enum_ffb_axes_actuator_offsets,
+    get_axis_logical_range,
+    get_axis_physical_range,
+    set_axis_range,
 )
 from .dinput_effects import (
     EffectHandle,
