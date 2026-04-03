@@ -44,7 +44,9 @@ from directinput_ffb.dinput_definitions import (
     DIPROP_LOGICALRANGE,
     DIPROPHEADER,
     DIPROPRANGE,
-    DIPH_BYOFFSET
+    DIPH_BYOFFSET,
+    DIEFF_POLAR,
+    DIEFF_CARTESIAN
 )
 from directinput_ffb import (
     check_hr,
@@ -140,14 +142,52 @@ def demo() -> None:
 
         supported_guids = {_guid_text(effect_info.guid) for effect_info in supported}
 
+        direction_basis = DIEFF_CARTESIAN
         effect_builders: list[tuple[str, object, Callable[[], object]]] = [
             (
-                "constant force",
+                "constant force 0",
                 GUID_ConstantForce,
                 lambda: create_constant_force_effect(
                     device,
                     magnitude=6000,
                     direction_hundredths_deg=0,
+                    direction_basis=direction_basis,
+                    duration_us=900_000,
+                    axes_offsets=axes_offsets,
+                ),
+            ),
+            (
+                "constant force 90",
+                GUID_ConstantForce,
+                lambda: create_constant_force_effect(
+                    device,
+                    magnitude=6000,
+                    direction_hundredths_deg=9000,
+                    direction_basis=direction_basis,
+                    duration_us=900_000,
+                    axes_offsets=axes_offsets,
+                ),
+            ),
+            (
+                "constant force 180",
+                GUID_ConstantForce,
+                lambda: create_constant_force_effect(
+                    device,
+                    magnitude=6000,
+                    direction_hundredths_deg=18000,
+                    direction_basis=direction_basis,
+                    duration_us=900_000,
+                    axes_offsets=axes_offsets,
+                ),
+            ),
+            (
+                "constant force 270",
+                GUID_ConstantForce,
+                lambda: create_constant_force_effect(
+                    device,
+                    magnitude=6000,
+                    direction_hundredths_deg=27000,
+                    direction_basis=direction_basis,
                     duration_us=900_000,
                     axes_offsets=axes_offsets,
                 ),
@@ -160,6 +200,7 @@ def demo() -> None:
                     start_magnitude=-5000,
                     end_magnitude=7000,
                     direction_hundredths_deg=0,
+                    direction_basis=direction_basis,
                     duration_us=900_000,
                     axes_offsets=axes_offsets,
                 ),
@@ -174,6 +215,7 @@ def demo() -> None:
                     phase_hundredths_deg=0,
                     period_us=220_000,
                     direction_hundredths_deg=9000,
+                    direction_basis=direction_basis,
                     duration_us=900_000,
                     axes_offsets=axes_offsets,
                 ),
@@ -188,6 +230,7 @@ def demo() -> None:
                     phase_hundredths_deg=0,
                     period_us=260_000,
                     direction_hundredths_deg=9000,
+                    direction_basis=direction_basis,
                     duration_us=900_000,
                     axes_offsets=axes_offsets,
                 ),
@@ -202,6 +245,7 @@ def demo() -> None:
                     phase_hundredths_deg=0,
                     period_us=260_000,
                     direction_hundredths_deg=9000,
+                    direction_basis=direction_basis,
                     duration_us=900_000,
                     axes_offsets=axes_offsets,
                 ),
@@ -216,6 +260,7 @@ def demo() -> None:
                     phase_hundredths_deg=0,
                     period_us=240_000,
                     direction_hundredths_deg=9000,
+                    direction_basis=direction_basis,
                     duration_us=900_000,
                     axes_offsets=axes_offsets,
                 ),
@@ -230,6 +275,7 @@ def demo() -> None:
                     phase_hundredths_deg=0,
                     period_us=240_000,
                     direction_hundredths_deg=9000,
+                    direction_basis=direction_basis,
                     duration_us=900_000,
                     axes_offsets=axes_offsets,
                 ),

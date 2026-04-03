@@ -190,9 +190,17 @@ class ConditionEffectHandle(EffectHandle):
         self.set_type_specific_params(start=start)
 
 
+def angle_deg_to_cartesian(angle_deg: float, scale: int = 32767) -> tuple[int, int]:
+    radians = math.radians(angle_deg)
+    x = int(round(math.sin(radians) * scale))
+    y = int(round(-math.cos(radians) * scale))
+    return x, y
+
+
 def _build_axes_and_directions(
     axes_offsets: Sequence[int],
     direction_hundredths_deg: int,
+    direction_basis: int
 ) -> tuple[int, object, object]:
     """Allocate the axis and direction arrays used by ``DIEFFECT``.
 
@@ -207,9 +215,11 @@ def _build_axes_and_directions(
 
     axes = (DWORD * axis_count)(*axes_offsets)
     if axis_count == 1:
-        directions = (LONG * 1)(direction_hundredths_deg)
+        directions = (LONG * 1)(0)
     else:
         directions = (LONG * 2)(direction_hundredths_deg, 0)
+        if direction_basis == DIEFF_CARTESIAN:
+            directions = (LONG * 2)(*angle_deg_to_cartesian(direction_hundredths_deg / 100))
 
     return axis_count, axes, directions
 
@@ -218,17 +228,18 @@ def _build_effect_description(
     *,
     axes_offsets: Sequence[int],
     direction_hundredths_deg: int,
+    direction_basis: int,
     duration_us: int,
     type_specific: object,
     gain: int = DI_FFNOMINALMAX,
 ) -> tuple[DIEFFECT, object, object]:
     """Create the common ``DIEFFECT`` structure for the standard effect helpers."""
 
-    axis_count, axes, directions = _build_axes_and_directions(axes_offsets, direction_hundredths_deg)
+    axis_count, axes, directions = _build_axes_and_directions(axes_offsets, direction_hundredths_deg, direction_basis)
 
     effect_desc = DIEFFECT()
     effect_desc.dwSize = C.sizeof(DIEFFECT)
-    effect_desc.dwFlags = DIEFF_OBJECTOFFSETS | DIEFF_POLAR
+    effect_desc.dwFlags = DIEFF_OBJECTOFFSETS | direction_basis
     effect_desc.dwDuration = duration_us
     effect_desc.dwSamplePeriod = 0
     effect_desc.dwGain = gain
@@ -248,6 +259,7 @@ def _build_condition_description(
     *,
     axes_offsets: Sequence[int],
     direction_hundredths_deg: int,
+    direction_basis: int,
     duration_us: int,
     conditions: object,
     gain: int = DI_FFNOMINALMAX,
@@ -259,11 +271,11 @@ def _build_condition_description(
     the total byte count of the whole array.
     """
 
-    axis_count, axes, directions = _build_axes_and_directions(axes_offsets, direction_hundredths_deg)
+    axis_count, axes, directions = _build_axes_and_directions(axes_offsets, direction_hundredths_deg, direction_basis)
 
     effect_desc = DIEFFECT()
     effect_desc.dwSize = C.sizeof(DIEFFECT)
-    effect_desc.dwFlags = DIEFF_OBJECTOFFSETS | DIEFF_POLAR
+    effect_desc.dwFlags = DIEFF_OBJECTOFFSETS | direction_basis
     effect_desc.dwDuration = duration_us
     effect_desc.dwSamplePeriod = 0
     effect_desc.dwGain = gain
@@ -308,6 +320,7 @@ def create_constant_force_effect(
     *,
     magnitude: int = 5000,
     direction_hundredths_deg: int = 0,
+    direction_basis: int = DIEFF_POLAR,
     duration_us: int = 1_000_000,
     axes_offsets: tuple[int, ...] = (DIJOFS_X, DIJOFS_Y),
 ) -> ConstantForceEffectHandle:
@@ -317,9 +330,11 @@ def create_constant_force_effect(
     effect_desc, axes, directions = _build_effect_description(
         axes_offsets=axes_offsets,
         direction_hundredths_deg=direction_hundredths_deg,
+        direction_basis=direction_basis,
         duration_us=duration_us,
         type_specific=force,
     )
+    print("*" * 10, directions[0], directions[1])
     return _create_effect(
         device,
         effect_guid=GUID_ConstantForce,
@@ -337,6 +352,7 @@ def create_ramp_force_effect(
     start_magnitude: int = 0,
     end_magnitude: int = 5000,
     direction_hundredths_deg: int = 0,
+    direction_basis: int = DIEFF_POLAR,
     duration_us: int = 1_000_000,
     axes_offsets: tuple[int, ...] = (DIJOFS_X, DIJOFS_Y),
 ) -> RampForceEffectHandle:
@@ -346,6 +362,7 @@ def create_ramp_force_effect(
     effect_desc, axes, directions = _build_effect_description(
         axes_offsets=axes_offsets,
         direction_hundredths_deg=direction_hundredths_deg,
+        direction_basis=direction_basis,
         duration_us=duration_us,
         type_specific=force,
     )
@@ -369,6 +386,7 @@ def create_periodic_effect(
     phase_hundredths_deg: int = 0,
     period_us: int = 500_000,
     direction_hundredths_deg: int = 0,
+    direction_basis: int = DIEFF_POLAR,
     duration_us: int = 1_000_000,
     axes_offsets: tuple[int, ...] = (DIJOFS_X, DIJOFS_Y),
 ) -> PeriodicEffectHandle:
@@ -383,6 +401,7 @@ def create_periodic_effect(
     effect_desc, axes, directions = _build_effect_description(
         axes_offsets=axes_offsets,
         direction_hundredths_deg=direction_hundredths_deg,
+        direction_basis=direction_basis,
         duration_us=duration_us,
         type_specific=periodic,
     )
@@ -471,6 +490,7 @@ def create_condition_effect(
     dead_band: int = 0,
     offset: int = 0,
     direction_hundredths_deg: int = 0,
+    direction_basis: int = DIEFF_POLAR,
     duration_us: int = 0xFFFFFFFF,
     axes_offsets: tuple[int, ...] = (DIJOFS_X, DIJOFS_Y),
     per_axis: Iterable[dict[str, int]] | None = None,
@@ -499,6 +519,7 @@ def create_condition_effect(
     effect_desc, axes, directions = _build_condition_description(
         axes_offsets=axes_offsets,
         direction_hundredths_deg=direction_hundredths_deg,
+        direction_basis=direction_basis,
         duration_us=duration_us,
         conditions=conditions,
     )
@@ -527,13 +548,6 @@ def create_inertia_effect(device: POINTER(IDirectInputDevice8W), **kwargs) -> Co
 
 def create_friction_effect(device: POINTER(IDirectInputDevice8W), **kwargs) -> ConditionEffectHandle:
     return create_condition_effect(device, effect_guid=GUID_Friction, **kwargs)
-
-
-def angle_deg_to_cartesian(angle_deg: float, scale: int = 10000) -> tuple[int, int]:
-    radians = math.radians(angle_deg)
-    x = int(round(math.cos(radians) * scale))
-    y = int(round(math.sin(radians) * scale))
-    return x, y
 
 
 __all__ = [
