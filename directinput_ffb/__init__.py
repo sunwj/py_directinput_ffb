@@ -25,7 +25,12 @@ from .dinput_api import (
     enum_ffb_axes_actuator_offsets,
     get_axis_logical_range,
     get_axis_physical_range,
+    get_axis_range,
     set_axis_range,
+    get_device_gain,
+    set_device_gain,
+    set_autocenter,
+    stop_all_effects,
 )
 from .dinput_effects import (
     EffectHandle,
@@ -40,10 +45,13 @@ from .dinput_effects import (
     create_triangle_effect,
     create_sawtooth_up_effect,
     create_sawtooth_down_effect,
+    create_condition_effect,
     create_spring_effect,
     create_damper_effect,
     create_inertia_effect,
     create_friction_effect,
+    create_periodic_effect,
+    angle_deg_to_cartesian,
 )
 
 __all__ = [name for name in globals() if not name.startswith('_')]

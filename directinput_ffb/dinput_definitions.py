@@ -88,6 +88,7 @@ DIEP_DIRECTION = 0x00000040
 DIEP_ENVELOPE = 0x00000080
 DIEP_TYPESPECIFICPARAMS = 0x00000100
 DIEP_START = 0x20000000
+DIEP_STARTDELAY = 0x00000200
 DIEP_ALLPARAMS = (
     DIEP_DURATION
     | DIEP_SAMPLEPERIOD
@@ -98,6 +99,7 @@ DIEP_ALLPARAMS = (
     | DIEP_DIRECTION
     | DIEP_ENVELOPE
     | DIEP_TYPESPECIFICPARAMS
+    | DIEP_STARTDELAY
 )
 
 DIEFT_ALL = 0x00000000
@@ -106,6 +108,7 @@ INFINITE = 0xFFFFFFFF
 INFINITE_EFFECT_DURATION = INFINITE
 DI_FFNOMINALMAX = 10000
 DIEB_NOTRIGGER = 0xFFFFFFFF
+SFFC_STOPALL = 0x00000002
 
 # ---------------------------------------------------------------------------
 # Joystick state offsets
@@ -144,7 +147,6 @@ DIDFT_OPTIONAL = 0x80000000
 DIDOI_ASPECTPOSITION = 0x00000100
 
 DIDFT_ALL = 0x00000000
-DIDFT_AXIS = 0x00000003
 DIDFT_FFACTUATOR = 0x01000000
 DIDFT_OUTPUT = 0x10000000
 
@@ -194,6 +196,9 @@ def MAKEDIPROP(prop: int):
 DIPROP_RANGE = MAKEDIPROP(4)
 DIPROP_PHYSICALRANGE = MAKEDIPROP(18)
 DIPROP_LOGICALRANGE = MAKEDIPROP(19)
+DIPROP_FFGAIN = MAKEDIPROP(7)
+DIPROP_AUTOCENTER = MAKEDIPROP(9)
+DIPROPAUTOCENTER_OFF = 0
 
 # ---------------------------------------------------------------------------
 # Helpful pure-Python model objects
@@ -296,6 +301,33 @@ class DIDEVICEINSTANCEW(C.Structure):
         ("guidFFDriver", GUID),
         ("wUsagePage", WORD),
         ("wUsage", WORD),
+    ]
+
+
+class DIDEVCAPS(C.Structure):
+    _fields_ = [
+        ("dwSize", DWORD),
+        ("dwFlags", DWORD),
+        ("dwDevType", DWORD),
+        ("dwAxes", DWORD),
+        ("dwButtons", DWORD),
+        ("dwPOVs", DWORD),
+        ("dwFFSamplePeriod", DWORD),
+        ("dwFFMinTimeResolution", DWORD),
+        ("dwFirmwareRevision", DWORD),
+        ("dwHardwareRevision", DWORD),
+        ("dwFFDriverVersion", DWORD),
+    ]
+
+
+class DIEFFESCAPE(C.Structure):
+    _fields_ = [
+        ("dwSize", DWORD),
+        ("dwCommand", DWORD),
+        ("lpvInBuffer", LPVOID),
+        ("cbInBuffer", DWORD),
+        ("lpvOutBuffer", LPVOID),
+        ("cbOutBuffer", DWORD),
     ]
 
 
@@ -451,6 +483,13 @@ class DIPROPRANGE(C.Structure):
         ("lMax", LONG),
     ]
 
+
+class DIPROPDWORD(C.Structure):
+    _fields_ = [
+        ("diph", DIPROPHEADER),
+        ("dwData", DWORD),
+    ]
+
 # ---------------------------------------------------------------------------
 # Callback prototypes
 # ---------------------------------------------------------------------------
@@ -495,7 +534,7 @@ class IDirectInputEffect(IUnknown):
         COMMETHOD([], HRESULT, "Download"),
         COMMETHOD([], HRESULT, "Unload"),
         COMMETHOD([], HRESULT, "Escape",
-                  (["in", "out"], LPVOID, "pesc")),
+                  (["in", "out"], POINTER(DIEFFESCAPE), "pesc")),
     ]
 
 
@@ -503,7 +542,7 @@ class IDirectInputDevice8W(IUnknown):
     _iid_ = IID_IDirectInputDevice8W
     _methods_ = [
         COMMETHOD([], HRESULT, "GetCapabilities",
-                  (["in", "out"], LPVOID, "lpDIDevCaps")),
+                  (["in", "out"], POINTER(DIDEVCAPS), "lpDIDevCaps")),
         COMMETHOD([], HRESULT, "EnumObjects",
                   (["in"], LPDIENUMDEVICEOBJECTSCALLBACKW, "lpCallback"),
                   (["in"], LPVOID, "pvRef"),
@@ -532,11 +571,11 @@ class IDirectInputDevice8W(IUnknown):
                   (["in"], HWND, "hwnd"),
                   (["in"], DWORD, "dwFlags")),
         COMMETHOD([], HRESULT, "GetObjectInfo",
-                  (["in", "out"], LPVOID, "pdidoi"),
+                  (["in", "out"], POINTER(DIDEVICEOBJECTINSTANCEW), "pdidoi"),
                   (["in"], DWORD, "dwObj"),
                   (["in"], DWORD, "dwHow")),
         COMMETHOD([], HRESULT, "GetDeviceInfo",
-                  (["in", "out"], LPVOID, "pdidi")),
+                  (["in", "out"], POINTER(DIDEVICEINSTANCEW), "pdidi")),
         COMMETHOD([], HRESULT, "RunControlPanel",
                   (["in"], HWND, "hwndOwner"),
                   (["in"], DWORD, "dwFlags")),
@@ -554,7 +593,7 @@ class IDirectInputDevice8W(IUnknown):
                   (["in"], LPVOID, "pvRef"),
                   (["in"], DWORD, "dwEffType")),
         COMMETHOD([], HRESULT, "GetEffectInfo",
-                  (["in", "out"], LPVOID, "pdei"),
+                  (["in", "out"], POINTER(DIEFFECTINFOW), "pdei"),
                   (["in"], REFGUID, "rguid")),
         COMMETHOD([], HRESULT, "GetForceFeedbackState",
                   (["out"], POINTER(DWORD), "pdwOut")),
@@ -565,7 +604,7 @@ class IDirectInputDevice8W(IUnknown):
                   (["in"], LPVOID, "pvRef"),
                   (["in"], DWORD, "fl")),
         COMMETHOD([], HRESULT, "Escape",
-                  (["in", "out"], LPVOID, "pesc")),
+                  (["in", "out"], POINTER(DIEFFESCAPE), "pesc")),
         COMMETHOD([], HRESULT, "Poll"),
         COMMETHOD([], HRESULT, "SendDeviceData",
                   (["in"], DWORD, "cbObjectData"),
@@ -583,7 +622,7 @@ class IDirectInputDevice8W(IUnknown):
                   (["in"], LPVOID, "rgDiFileEft"),
                   (["in"], DWORD, "dwFlags")),
         COMMETHOD([], HRESULT, "BuildActionMap",
-                  (["in", "out"], LPVOID, "lpdiaf"),
+                  (["in", "out"], POINTER(C.c_ubyte), "lpdiaf"),
                   (["in"], LPCWSTR, "lpszUserName"),
                   (["in"], DWORD, "dwFlags")),
         COMMETHOD([], HRESULT, "SetActionMap",
@@ -591,7 +630,7 @@ class IDirectInputDevice8W(IUnknown):
                   (["in"], LPCWSTR, "lpszUserName"),
                   (["in"], DWORD, "dwFlags")),
         COMMETHOD([], HRESULT, "GetImageInfo",
-                  (["in", "out"], LPVOID, "lpdiDevImageInfoHeader")),
+                  (["in", "out"], POINTER(C.c_ubyte), "lpdiDevImageInfoHeader")),
     ]
 
 

@@ -28,6 +28,7 @@ import traceback
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -41,6 +42,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSlider,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -57,7 +59,6 @@ try:
         acquire,
         unacquire,
         enum_effects,
-        enum_ffb_axes_actuator_offsets
     )
     from directinput_ffb.dinput_effects import (
         EffectHandle,
@@ -152,23 +153,69 @@ def guid_str(guid: object) -> str:
     return str(guid).lower()
 
 
-def make_spinbox(
+class SliderSpinBox(QWidget):
+    """A slider paired with a directly editable spin box.
+
+    The two controls stay in sync in both directions; dragging the slider or
+    typing a value into the spin box updates the other.
+    """
+
+    def __init__(
+        self,
+        minimum: int,
+        maximum: int,
+        value: int,
+        step: int = 1,
+        suffix: str = "",
+        tooltip: str = "",
+    ) -> None:
+        super().__init__()
+
+        self.box = QSpinBox()
+        self.box.setRange(minimum, maximum)
+        self.box.setValue(value)
+        self.box.setSingleStep(step)
+        self.box.setKeyboardTracking(False)
+        if suffix:
+            self.box.setSuffix(suffix)
+        if tooltip:
+            self.box.setToolTip(tooltip)
+
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.setRange(minimum, maximum)
+        self.slider.setSingleStep(step)
+        self.slider.setValue(value)
+        self.slider.setToolTip(tooltip)
+
+        self.box.valueChanged.connect(self.slider.setValue)
+        self.slider.valueChanged.connect(self.box.setValue)
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.slider, 1)
+        layout.addWidget(self.box)
+        self.setLayout(layout)
+
+    def value(self) -> int:
+        return self.box.value()
+
+    def setValue(self, value: int) -> None:
+        self.box.setValue(value)
+
+    def setRange(self, minimum: int, maximum: int) -> None:
+        self.box.setRange(minimum, maximum)
+        self.slider.setRange(minimum, maximum)
+
+
+def make_slider_input(
     minimum: int,
     maximum: int,
     value: int,
     step: int = 1,
     suffix: str = "",
     tooltip: str = "",
-) -> QSpinBox:
-    box = QSpinBox()
-    box.setRange(minimum, maximum)
-    box.setValue(value)
-    box.setSingleStep(step)
-    if suffix:
-        box.setSuffix(suffix)
-    if tooltip:
-        box.setToolTip(tooltip)
-    return box
+) -> SliderSpinBox:
+    return SliderSpinBox(minimum, maximum, value, step=step, suffix=suffix, tooltip=tooltip)
 
 
 def wrap_group(title: str, layout) -> QGroupBox:
@@ -191,7 +238,7 @@ class SharedCommonControls(QWidget):
             "or on two actuator axes."
         )
 
-        self.direction_deg = make_spinbox(
+        self.direction_deg = make_slider_input(
             0,
             359,
             0,
@@ -210,7 +257,7 @@ class SharedCommonControls(QWidget):
             "selected axis; negative means reverse force."
         )
 
-        self.duration_ms = make_spinbox(
+        self.duration_ms = make_slider_input(
             1,
             2_147_483,
             1000,
@@ -273,12 +320,12 @@ class SharedCommonControls(QWidget):
 class ConditionAxisControls(QWidget):
     def __init__(self, title: str) -> None:
         super().__init__()
-        self.offset = make_spinbox(-10000, 10000, 0, step=100)
-        self.positive_coefficient = make_spinbox(-10000, 10000, 5000, step=100)
-        self.negative_coefficient = make_spinbox(-10000, 10000, 5000, step=100)
-        self.positive_saturation = make_spinbox(0, 10000, 10000, step=100)
-        self.negative_saturation = make_spinbox(0, 10000, 10000, step=100)
-        self.dead_band = make_spinbox(0, 10000, 0, step=100)
+        self.offset = make_slider_input(-10000, 10000, 0, step=100)
+        self.positive_coefficient = make_slider_input(-10000, 10000, 5000, step=100)
+        self.negative_coefficient = make_slider_input(-10000, 10000, 5000, step=100)
+        self.positive_saturation = make_slider_input(0, 10000, 10000, step=100)
+        self.negative_saturation = make_slider_input(0, 10000, 10000, step=100)
+        self.dead_band = make_slider_input(0, 10000, 0, step=100)
 
         form = QFormLayout()
         form.addRow("Offset", self.offset)
@@ -386,7 +433,7 @@ class ConstantForceTab(EffectTab):
 
     def __init__(self, window: "MainWindow") -> None:
         super().__init__(window, GUID_ConstantForce)
-        self.magnitude = make_spinbox(-10000, 10000, 5000, step=100)
+        self.magnitude = make_slider_input(-10000, 10000, 5000, step=100)
 
         params = QFormLayout()
         params.addRow("Magnitude", self.magnitude)
@@ -417,8 +464,8 @@ class RampForceTab(EffectTab):
 
     def __init__(self, window: "MainWindow") -> None:
         super().__init__(window, GUID_RampForce)
-        self.start_magnitude = make_spinbox(-10000, 10000, -2000, step=100)
-        self.end_magnitude = make_spinbox(-10000, 10000, 6000, step=100)
+        self.start_magnitude = make_slider_input(-10000, 10000, -2000, step=100)
+        self.end_magnitude = make_slider_input(-10000, 10000, 6000, step=100)
 
         params = QFormLayout()
         params.addRow("Start magnitude", self.start_magnitude)
@@ -468,13 +515,13 @@ class PeriodicEffectTab(EffectTab):
         self.effect_name = effect_name
         self.factory = factory
 
-        self.magnitude = make_spinbox(0, 10000, 5000, step=100)
-        self.offset = make_spinbox(-10000, 10000, 0, step=100)
-        self.phase_deg = make_spinbox(
+        self.magnitude = make_slider_input(0, 10000, 5000, step=100)
+        self.offset = make_slider_input(-10000, 10000, 0, step=100)
+        self.phase_deg = make_slider_input(
             0, 359, 0, step=1, suffix=" °",
             tooltip="Phase in whole degrees. Converted internally to DirectInput units.",
         )
-        self.period_ms = make_spinbox(
+        self.period_ms = make_slider_input(
             1, 10_000, 250, step=10, suffix=" ms",
             tooltip="Period in milliseconds. Converted internally to microseconds.",
         )
@@ -662,11 +709,9 @@ class MainWindow(QMainWindow):
 
     def refresh_devices(self) -> None:
         self.device_combo.clear()
-        self._enumerated_devices = []
         try:
             di = create_direct_input()
             devices = enum_devices(di, only_attached=True, only_force_feedback=True)
-            self._enumerated_devices = devices
             for dev in devices:
                 try:
                     label = f"{dev.product_name} / {dev.instance_name}"

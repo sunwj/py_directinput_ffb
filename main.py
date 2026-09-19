@@ -41,15 +41,10 @@ from directinput_ffb.dinput_definitions import (
     GUID_Damper,
     GUID_Inertia,
     GUID_Friction,
-    DIPROP_LOGICALRANGE,
-    DIPROPHEADER,
-    DIPROPRANGE,
-    DIPH_BYOFFSET,
-    DIEFF_POLAR,
     DIEFF_CARTESIAN
 )
+from directinput_ffb.dinput_api import build_joystick_data_format
 from directinput_ffb import (
-    check_hr,
     create_direct_input,
     enum_device_objects,
     enum_ffb_axes_actuator_offsets,
@@ -110,31 +105,33 @@ def demo() -> None:
     print("Opening first device...")
     device = create_device(direct_input, devices[0].guid_instance)
 
-    print("Setting cooperative level...")
-    hwnd = set_cooperative_level(device)
-
-    print("Setting data format...")
-    data_format = set_data_format(device)
-
-    print("Get axis logical range")
-    x_lmin, x_lmax = get_axis_logical_range(device, DIJOFS_X)
-    y_lmin, y_lmax = get_axis_logical_range(device, DIJOFS_Y)
-    print(f"logical range X: [{x_lmin, x_lmax}], logical range Y: [{y_lmin, y_lmax}]")
-
-    print("Set axis range...")
-    set_axis_range(device, DIJOFS_X, x_lmin, x_lmax)
-    set_axis_range(device, DIJOFS_Y, y_lmin, y_lmax)
-
-    print("Acquiring device...")
-    acquire(device)
-
-    print("Enumerating device object information...")
-    obj_infos = enum_device_objects(device, DIDFT_AXIS | DIDFT_FFACTUATOR)
-    for obj_info in obj_infos: print(f'{obj_info.guid_type}, {obj_info.name}, {obj_info.offset}, {hex(obj_info.type_flags)}, is_axis: {obj_info.is_axis}, is_actuator: {obj_info.is_ff_actuator}')
-
-    axes_offsets = enum_ffb_axes_actuator_offsets(device)
-
     try:
+        print("Setting cooperative level...")
+        hwnd = set_cooperative_level(device)
+
+        print("Enumerating device object information...")
+        obj_infos = enum_device_objects(device, DIDFT_AXIS | DIDFT_FFACTUATOR)
+        for obj_info in obj_infos: print(f'{obj_info.guid_type}, {obj_info.name}, {obj_info.offset}, {hex(obj_info.type_flags)}, is_axis: {obj_info.is_axis}, is_actuator: {obj_info.is_ff_actuator}')
+
+        axes_offsets = enum_ffb_axes_actuator_offsets(device)
+        axes_offsets = [offset for offset in axes_offsets if offset in (DIJOFS_X, DIJOFS_Y)]
+        if not axes_offsets:
+            axes_offsets = [DIJOFS_X, DIJOFS_Y]
+        axes_offsets = tuple(axes_offsets[:2])
+        print(f"FFB actuator axes (data-format offsets): {axes_offsets}")
+
+        print("Setting data format...")
+        data_format = set_data_format(device, build_joystick_data_format(axes_offsets))
+
+        print("Get/set axis ranges...")
+        for axis_offset in axes_offsets:
+            axis_min, axis_max = get_axis_logical_range(device, axis_offset)
+            print(f"logical range offset {axis_offset}: [{axis_min}, {axis_max}]")
+            set_axis_range(device, axis_offset, axis_min, axis_max)
+
+        print("Acquiring device...")
+        acquire(device)
+
         print("Enumerating supported effects...")
         supported = enum_effects(device)
         for effect_info in supported:
@@ -356,9 +353,11 @@ def demo() -> None:
 
     finally:
         print("Unacquiring device...")
-        unacquire(device)
-        _ = data_format
-        _ = hwnd
+        if device is not None:
+            try:
+                unacquire(device)
+            except Exception as exc:
+                print(f"Unacquire failed: {exc}")
         print("Done.")
 
 

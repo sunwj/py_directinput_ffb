@@ -15,7 +15,7 @@ that these functions stay readable.
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Sequence
 
 from .dinput_types import C, GUID, LPVOID, POINTER, HWND, kernel32, user32, DirectInput8Create
 from .dinput_definitions import (
@@ -56,9 +56,15 @@ from .dinput_definitions import (
     DIPROPHEADER,
     DIPROPRANGE,
     DIPH_BYOFFSET,
+    DIPH_DEVICE,
     DIPROP_RANGE,
     DIPROP_LOGICALRANGE,
-    DIPROP_PHYSICALRANGE
+    DIPROP_PHYSICALRANGE,
+    DIPROP_FFGAIN,
+    DIPROP_AUTOCENTER,
+    DIPROPAUTOCENTER_OFF,
+    SFFC_STOPALL,
+    DIPROPDWORD,
 )
 
 
@@ -128,11 +134,6 @@ def get_ffb_hwnd() -> HWND:
 # Root DirectInput creation and device enumeration
 # ---------------------------------------------------------------------------
 
-_object_enum_callbacks = []
-_device_enum_callbacks = []
-_effect_enum_callbacks = []
-
-
 def enum_device_objects(device, flags: int = DIDFT_ALL) -> list[EnumeratedDeviceObjectInfo]:
     """
     Enumerate DirectInput objects on a device.
@@ -175,7 +176,6 @@ def enum_device_objects(device, flags: int = DIDFT_ALL) -> list[EnumeratedDevice
         return DIENUM_CONTINUE
 
     cb = LPDIENUMDEVICEOBJECTSCALLBACKW(_cb)
-    # _object_enum_callbacks.append(cb)
     device.EnumObjects(cb, None, flags)
     return results
 
@@ -193,7 +193,6 @@ def enum_ffb_axes_actuator_offsets(device):
         return DIENUM_CONTINUE
 
     cb = LPDIENUMDEVICEOBJECTSCALLBACKW(_cb)
-    # _object_enum_callbacks.append(cb)
     device.EnumObjects(cb, None, DIDFT_AXIS | DIDFT_FFACTUATOR)
 
     return axes_offsets
@@ -250,7 +249,6 @@ def enum_devices(
         return DIENUM_CONTINUE
 
     cb = LPDIENUMDEVICESCALLBACKW(_cb)
-    # _device_enum_callbacks.append(cb)
 
     hr = di.EnumDevices(DI8DEVCLASS_GAMECTRL, cb, None, flags)
     check_hr(hr, "IDirectInput8W.EnumDevices")
@@ -307,8 +305,11 @@ def set_cooperative_level(
     return hwnd
 
 
-def build_joystick_data_format() -> DIDATAFORMAT:
+def build_joystick_data_format(axes_offsets: Sequence[int] = (DIJOFS_X, DIJOFS_Y)) -> DIDATAFORMAT:
     """Build a minimal application data format for X/Y joystick axes.
+
+    ``axes_offsets`` selects which of the X/Y axes are included, using the
+    same offsets that effects later pass in ``rgdwAxes``.
 
     This format is intentionally small because the original working script only
     needed enough state information to satisfy DirectInput and create force
@@ -320,31 +321,31 @@ def build_joystick_data_format() -> DIDATAFORMAT:
     would be packed if we later called ``GetDeviceState``.
     """
 
-    objs = (DIOBJECTDATAFORMAT * 2)()
+    axis_guids = {DIJOFS_X: GUID_XAxis, DIJOFS_Y: GUID_YAxis}
+    selected = [offset for offset in axes_offsets if offset in axis_guids]
+    if not selected:
+        selected = [DIJOFS_X]
 
-    objs[0].pguid = C.pointer(GUID_XAxis)
-    objs[0].dwOfs = 0
-    objs[0].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE
-    objs[0].dwFlags = DIDOI_ASPECTPOSITION
-
-    objs[1].pguid = C.pointer(GUID_YAxis)
-    objs[1].dwOfs = 4
-    objs[1].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE
-    objs[1].dwFlags = DIDOI_ASPECTPOSITION
+    objs = (DIOBJECTDATAFORMAT * len(selected))()
+    for index, offset in enumerate(selected):
+        objs[index].pguid = C.pointer(axis_guids[offset])
+        objs[index].dwOfs = offset
+        objs[index].dwType = DIDFT_AXIS | DIDFT_ANYINSTANCE
+        objs[index].dwFlags = DIDOI_ASPECTPOSITION
 
     data_format = DIDATAFORMAT()
     data_format.dwSize = C.sizeof(DIDATAFORMAT)
     data_format.dwObjSize = C.sizeof(DIOBJECTDATAFORMAT)
     data_format.dwFlags = DIDF_ABSAXIS
     data_format.dwDataSize = C.sizeof(DIJOYSTATE)
-    data_format.dwNumObjs = 2
+    data_format.dwNumObjs = len(selected)
     data_format.rgodf = objs
 
     # Keep the backing arrays and GUID objects alive as long as the returned
     # DIDATAFORMAT instance is alive. Without this, Python could free memory
     # still referenced by DirectInput.
     data_format._objs_ref = objs
-    data_format._guid_refs = [GUID_XAxis, GUID_YAxis]
+    data_format._guid_refs = [axis_guids[offset] for offset in selected]
     return data_format
 
 
@@ -404,7 +405,6 @@ def enum_effects(device: POINTER(IDirectInputDevice8W)) -> List[EnumeratedEffect
         return DIENUM_CONTINUE
 
     cb = LPDIENUMEFFECTSCALLBACKW(_cb)
-    # _effect_enum_callbacks.append(cb)
 
     hr = device.EnumEffects(cb, None, 0)
     check_hr(hr, "IDirectInputDevice8W.EnumEffects")
@@ -415,7 +415,7 @@ def enum_effects(device: POINTER(IDirectInputDevice8W)) -> List[EnumeratedEffect
 # ---------------------------------------------------------------------------
 
 
-def _get_axis_range(device: POINTER(IDirectInputDevice8W), axis_offset: int, rguid_prop: C.c_void_p) -> List[int, int]:
+def _get_axis_range(device: POINTER(IDirectInputDevice8W), axis_offset: int, rguid_prop: C.c_void_p) -> tuple[int, int]:
     prop = DIPROPRANGE()
     prop.diph.dwSize = C.sizeof(DIPROPRANGE)
     prop.diph.dwHeaderSize = C.sizeof(DIPROPHEADER)
@@ -425,18 +425,18 @@ def _get_axis_range(device: POINTER(IDirectInputDevice8W), axis_offset: int, rgu
     hr = device.GetProperty(rguid_prop, C.byref(prop))
     check_hr(hr, f"GetProperty(DIPROP_LOGICALRANGE, offset={axis_offset})") 
 
-    return [int(prop.lMin), int(prop.lMax)]
+    return tuple([int(prop.lMin), int(prop.lMax)])
 
 
-def get_axis_logical_range(device: POINTER(IDirectInputDevice8W), axis_offset: int) -> List[int, int]:
+def get_axis_logical_range(device: POINTER(IDirectInputDevice8W), axis_offset: int) -> tuple[int, int]:
     return _get_axis_range(device, axis_offset, DIPROP_LOGICALRANGE)
 
 
-def get_axis_physical_range(device: POINTER(IDirectInputDevice8W), axis_offset: int) -> List[int, int]:
+def get_axis_physical_range(device: POINTER(IDirectInputDevice8W), axis_offset: int) -> tuple[int, int]:
     return _get_axis_range(device, axis_offset, DIPROP_PHYSICALRANGE)
 
 
-def get_axis_range(device: POINTER(IDirectInputDevice8W), axis_offset: int) -> List[int, int]:
+def get_axis_range(device: POINTER(IDirectInputDevice8W), axis_offset: int) -> tuple[int, int]:
     return _get_axis_range(device, axis_offset, DIPROP_RANGE)
 
 
@@ -451,4 +451,62 @@ def set_axis_range(device: POINTER(IDirectInputDevice8W), axis_offset: int, rang
     prop.lMax = range_max
 
     hr = device.SetProperty(DIPROP_RANGE, C.byref(prop))
-    check_hr(hr, f"SetProperty(DIPROP_LOGICALRANGE, offset={axis_offset})") 
+    check_hr(hr, f"SetProperty(DIPROP_LOGICALRANGE, offset={axis_offset})")
+
+
+# ---------------------------------------------------------------------------
+# Device-wide force-feedback properties
+# ---------------------------------------------------------------------------
+
+
+def get_device_gain(device: POINTER(IDirectInputDevice8W)) -> int:
+    """Read the device-wide force-feedback gain (0..10000)."""
+
+    prop = DIPROPDWORD()
+    prop.diph.dwSize = C.sizeof(DIPROPDWORD)
+    prop.diph.dwHeaderSize = C.sizeof(DIPROPHEADER)
+    prop.diph.dwObj = 0
+    prop.diph.dwHow = DIPH_DEVICE
+
+    hr = device.GetProperty(DIPROP_FFGAIN, C.byref(prop))
+    check_hr(hr, "GetProperty(DIPROP_FFGAIN)")
+    return int(prop.dwData)
+
+
+def set_device_gain(device: POINTER(IDirectInputDevice8W), gain: int) -> None:
+    """Set the device-wide force-feedback gain (0..10000)."""
+
+    prop = DIPROPDWORD()
+    prop.diph.dwSize = C.sizeof(DIPROPDWORD)
+    prop.diph.dwHeaderSize = C.sizeof(DIPROPHEADER)
+    prop.diph.dwObj = 0
+    prop.diph.dwHow = DIPH_DEVICE
+    prop.dwData = gain
+
+    hr = device.SetProperty(DIPROP_FFGAIN, C.byref(prop))
+    check_hr(hr, "SetProperty(DIPROP_FFGAIN)")
+
+
+def set_autocenter(device: POINTER(IDirectInputDevice8W), on: bool) -> None:
+    """Enable or disable the built-in auto-centre spring.
+
+    Some devices reject this property; callers should treat failure as
+    informational.
+    """
+
+    prop = DIPROPDWORD()
+    prop.diph.dwSize = C.sizeof(DIPROPDWORD)
+    prop.diph.dwHeaderSize = C.sizeof(DIPROPHEADER)
+    prop.diph.dwObj = 0
+    prop.diph.dwHow = DIPH_DEVICE
+    prop.dwData = 1 if on else DIPROPAUTOCENTER_OFF
+
+    hr = device.SetProperty(DIPROP_AUTOCENTER, C.byref(prop))
+    check_hr(hr, "SetProperty(DIPROP_AUTOCENTER)")
+
+
+def stop_all_effects(device: POINTER(IDirectInputDevice8W)) -> None:
+    """Send ``SFFC_STOPALL`` to stop every effect currently playing."""
+
+    hr = device.SendForceFeedbackCommand(SFFC_STOPALL)
+    check_hr(hr, "SendForceFeedbackCommand(SFFC_STOPALL)")

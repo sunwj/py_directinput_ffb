@@ -50,10 +50,20 @@ from .dinput_definitions import (
     DIEFF_OBJECTOFFSETS,
     DIEFF_POLAR,
     DIEFF_CARTESIAN,
+    DIEP_DURATION,
+    DIEP_DIRECTION,
+    DIEP_GAIN,
+    DIEP_ENVELOPE,
+    DIEP_TRIGGERBUTTON,
+    DIEP_STARTDELAY,
     DIEP_TYPESPECIFICPARAMS,
     DIEP_START,
+    DIENVELOPE,
 )
 from .dinput_api import check_hr
+
+
+_UNSET = object()
 
 
 @dataclass
@@ -72,6 +82,9 @@ class EffectHandle:
     directions: object
     type_specific: object
     keepalive: tuple[object, ...] = ()
+    direction_basis: int = 0
+    direction_hundredths_deg: int = 0
+    live_envelope: object = None
 
     def start(self, iterations: int = 1, flags: int = 0) -> None:
         hr = self.effect.Start(iterations, flags)
@@ -97,6 +110,72 @@ class EffectHandle:
         """
 
         flags = DIEP_TYPESPECIFICPARAMS
+        if start:
+            flags |= DIEP_START
+        hr = self.effect.SetParameters(C.byref(self.dieffect), flags)
+        check_hr(hr, "IDirectInputEffect.SetParameters")
+
+    def _set_direction(self, direction_hundredths_deg: int) -> None:
+        """Rewrite the kept-alive direction array for the handle's basis."""
+
+        self.direction_hundredths_deg = direction_hundredths_deg
+        if len(self.directions) == 1:
+            # DirectInput specifies that a single-axis Cartesian direction is
+            # represented by one LONG containing zero.
+            self.directions[0] = 0
+        elif self.direction_basis == DIEFF_CARTESIAN:
+            cart_x, cart_y = angle_deg_to_cartesian(direction_hundredths_deg / 100)
+            self.directions[0] = cart_x
+            self.directions[1] = cart_y
+        else:
+            self.directions[0] = direction_hundredths_deg
+            self.directions[1] = 0
+
+    def apply(
+        self,
+        *,
+        duration_ms: int | None = None,
+        direction_hundredths_deg: int | None = None,
+        gain: int | None = None,
+        envelope: object | None = _UNSET,
+        type_specific: object | None = _UNSET,
+        start: bool = False,
+    ) -> None:
+        """Live-update an effect via ``SetParameters`` with the relevant flags.
+
+        ``DIEP_AXES`` is deliberately never set: the axis list is fixed at
+        ``CreateEffect`` time. ``envelope`` is a ``DIENVELOPE`` instance (kept
+        alive on the handle).
+        """
+
+        flags = 0
+        if envelope is not _UNSET:
+            if envelope is not None:
+                self.dieffect.lpEnvelope = C.cast(C.pointer(envelope), POINTER(DIENVELOPE))
+                self.live_envelope = envelope
+            else:
+                self.dieffect.lpEnvelope = None
+                if self.live_envelope is None:
+                    envelope = _UNSET
+                self.live_envelope = None
+            if envelope is not _UNSET:
+                flags |= DIEP_ENVELOPE
+        if duration_ms is not None:
+            self.dieffect.dwDuration = 0xFFFFFFFF if duration_ms <= 0 else duration_ms * 1000
+            flags |= DIEP_DURATION
+        if gain is not None:
+            self.dieffect.dwGain = gain
+            flags |= DIEP_GAIN
+        if direction_hundredths_deg is not None:
+            self._set_direction(direction_hundredths_deg)
+            flags |= DIEP_DIRECTION
+        if type_specific is not _UNSET:
+            if type_specific is None:
+                raise ValueError("type_specific cannot be None")
+            self.type_specific = type_specific
+            self.dieffect.cbTypeSpecificParams = C.sizeof(type_specific)
+            self.dieffect.lpvTypeSpecificParams = C.cast(C.pointer(type_specific), LPVOID)
+            flags |= DIEP_TYPESPECIFICPARAMS
         if start:
             flags |= DIEP_START
         hr = self.effect.SetParameters(C.byref(self.dieffect), flags)
@@ -201,12 +280,15 @@ def _build_axes_and_directions(
     axes_offsets: Sequence[int],
     direction_hundredths_deg: int,
     direction_basis: int
-) -> tuple[int, object, object]:
+) -> tuple[int, object, object, int]:
     """Allocate the axis and direction arrays used by ``DIEFFECT``.
 
     The helper keeps the old behaviour from the working script: one-axis and
     two-axis effects are supported directly, and two-axis effects use polar
     coordinates where the second direction entry is reserved and must be zero.
+
+    For single-axis effects, ``DIEFF_CARTESIAN`` is forced and the x component
+    (sin) of the direction vector is sent, so a wheel rolls the commanded way.
     """
 
     axis_count = len(axes_offsets)
@@ -216,12 +298,13 @@ def _build_axes_and_directions(
     axes = (DWORD * axis_count)(*axes_offsets)
     if axis_count == 1:
         directions = (LONG * 1)(0)
+        direction_basis = DIEFF_CARTESIAN
     else:
         directions = (LONG * 2)(direction_hundredths_deg, 0)
         if direction_basis == DIEFF_CARTESIAN:
             directions = (LONG * 2)(*angle_deg_to_cartesian(direction_hundredths_deg / 100))
 
-    return axis_count, axes, directions
+    return axis_count, axes, directions, direction_basis
 
 
 def _build_effect_description(
@@ -232,10 +315,11 @@ def _build_effect_description(
     duration_us: int,
     type_specific: object,
     gain: int = DI_FFNOMINALMAX,
+    envelope: object | None = None,
 ) -> tuple[DIEFFECT, object, object]:
     """Create the common ``DIEFFECT`` structure for the standard effect helpers."""
 
-    axis_count, axes, directions = _build_axes_and_directions(axes_offsets, direction_hundredths_deg, direction_basis)
+    axis_count, axes, directions, direction_basis = _build_axes_and_directions(axes_offsets, direction_hundredths_deg, direction_basis)
 
     effect_desc = DIEFFECT()
     effect_desc.dwSize = C.sizeof(DIEFFECT)
@@ -249,6 +333,8 @@ def _build_effect_description(
     effect_desc.rgdwAxes = C.cast(axes, POINTER(DWORD))
     effect_desc.rglDirection = C.cast(directions, POINTER(LONG))
     effect_desc.lpEnvelope = None
+    if envelope is not None:
+        effect_desc.lpEnvelope = C.cast(C.pointer(envelope), POINTER(DIENVELOPE))
     effect_desc.cbTypeSpecificParams = C.sizeof(type_specific)
     effect_desc.lpvTypeSpecificParams = C.cast(C.pointer(type_specific), LPVOID)
     effect_desc.dwStartDelay = 0
@@ -271,7 +357,7 @@ def _build_condition_description(
     the total byte count of the whole array.
     """
 
-    axis_count, axes, directions = _build_axes_and_directions(axes_offsets, direction_hundredths_deg, direction_basis)
+    axis_count, axes, directions, direction_basis = _build_axes_and_directions(axes_offsets, direction_hundredths_deg, direction_basis)
 
     effect_desc = DIEFFECT()
     effect_desc.dwSize = C.sizeof(DIEFFECT)
@@ -301,6 +387,9 @@ def _create_effect(
     axes: object,
     directions: object,
     keepalive: tuple[object, ...] = (),
+    envelope: object | None = None,
+    direction_basis: int = 0,
+    direction_hundredths_deg: int = 0,
 ) -> EffectHandle:
     """Call ``CreateEffect`` and wrap the returned COM object."""
 
@@ -311,8 +400,30 @@ def _create_effect(
         axes=axes,
         directions=directions,
         type_specific=type_specific,
-        keepalive=keepalive,
+        keepalive=keepalive + ((envelope,) if envelope is not None else ()),
+        direction_basis=direction_basis,
+        direction_hundredths_deg=direction_hundredths_deg,
+        live_envelope=envelope,
     )
+
+
+def _maybe_envelope(
+    attack_level: int | None,
+    attack_time_ms: int | None,
+    fade_level: int | None,
+    fade_time_ms: int | None,
+) -> DIENVELOPE | None:
+    """Build a ``DIENVELOPE`` when any of the envelope levels was requested."""
+
+    if attack_level is None and fade_level is None:
+        return None
+    envelope = DIENVELOPE()
+    envelope.dwSize = C.sizeof(DIENVELOPE)
+    envelope.dwAttackLevel = attack_level or 0
+    envelope.dwAttackTime = (attack_time_ms or 0) * 1000
+    envelope.dwFadeLevel = fade_level or 0
+    envelope.dwFadeTime = (fade_time_ms or 0) * 1000
+    return envelope
 
 
 def create_constant_force_effect(
@@ -323,18 +434,23 @@ def create_constant_force_effect(
     direction_basis: int = DIEFF_POLAR,
     duration_us: int = 1_000_000,
     axes_offsets: tuple[int, ...] = (DIJOFS_X, DIJOFS_Y),
+    attack_level: int | None = None,
+    attack_time_ms: int | None = None,
+    fade_level: int | None = None,
+    fade_time_ms: int | None = None,
 ) -> ConstantForceEffectHandle:
     """Create a standard constant-force effect."""
 
     force = DICONSTANTFORCE(lMagnitude=magnitude)
+    envelope = _maybe_envelope(attack_level, attack_time_ms, fade_level, fade_time_ms)
     effect_desc, axes, directions = _build_effect_description(
         axes_offsets=axes_offsets,
         direction_hundredths_deg=direction_hundredths_deg,
         direction_basis=direction_basis,
         duration_us=duration_us,
         type_specific=force,
+        envelope=envelope,
     )
-    print("*" * 10, directions[0], directions[1])
     return _create_effect(
         device,
         effect_guid=GUID_ConstantForce,
@@ -343,6 +459,9 @@ def create_constant_force_effect(
         type_specific=force,
         axes=axes,
         directions=directions,
+        envelope=envelope,
+        direction_basis=direction_basis,
+        direction_hundredths_deg=direction_hundredths_deg,
     )
 
 
@@ -355,16 +474,22 @@ def create_ramp_force_effect(
     direction_basis: int = DIEFF_POLAR,
     duration_us: int = 1_000_000,
     axes_offsets: tuple[int, ...] = (DIJOFS_X, DIJOFS_Y),
+    attack_level: int | None = None,
+    attack_time_ms: int | None = None,
+    fade_level: int | None = None,
+    fade_time_ms: int | None = None,
 ) -> RampForceEffectHandle:
     """Create a standard ramp-force effect."""
 
     force = DIRAMPFORCE(lStart=start_magnitude, lEnd=end_magnitude)
+    envelope = _maybe_envelope(attack_level, attack_time_ms, fade_level, fade_time_ms)
     effect_desc, axes, directions = _build_effect_description(
         axes_offsets=axes_offsets,
         direction_hundredths_deg=direction_hundredths_deg,
         direction_basis=direction_basis,
         duration_us=duration_us,
         type_specific=force,
+        envelope=envelope,
     )
     return _create_effect(
         device,
@@ -374,6 +499,9 @@ def create_ramp_force_effect(
         type_specific=force,
         axes=axes,
         directions=directions,
+        envelope=envelope,
+        direction_basis=direction_basis,
+        direction_hundredths_deg=direction_hundredths_deg,
     )
 
 
@@ -389,8 +517,18 @@ def create_periodic_effect(
     direction_basis: int = DIEFF_POLAR,
     duration_us: int = 1_000_000,
     axes_offsets: tuple[int, ...] = (DIJOFS_X, DIJOFS_Y),
+    attack_level: int | None = None,
+    attack_time_ms: int | None = None,
+    fade_level: int | None = None,
+    fade_time_ms: int | None = None,
 ) -> PeriodicEffectHandle:
     """Create a periodic effect given one of the standard periodic GUIDs."""
+
+    if magnitude < 0 or abs(offset) + magnitude > DI_FFNOMINALMAX:
+        raise ValueError(
+            "Periodic effects require magnitude >= 0 and "
+            "abs(offset) + magnitude <= DI_FFNOMINALMAX."
+        )
 
     periodic = DIPERIODIC(
         dwMagnitude=magnitude,
@@ -398,12 +536,14 @@ def create_periodic_effect(
         dwPhase=phase_hundredths_deg,
         dwPeriod=period_us,
     )
+    envelope = _maybe_envelope(attack_level, attack_time_ms, fade_level, fade_time_ms)
     effect_desc, axes, directions = _build_effect_description(
         axes_offsets=axes_offsets,
         direction_hundredths_deg=direction_hundredths_deg,
         direction_basis=direction_basis,
         duration_us=duration_us,
         type_specific=periodic,
+        envelope=envelope,
     )
     return _create_effect(
         device,
@@ -413,6 +553,9 @@ def create_periodic_effect(
         type_specific=periodic,
         axes=axes,
         directions=directions,
+        envelope=envelope,
+        direction_basis=direction_basis,
+        direction_hundredths_deg=direction_hundredths_deg,
     )
 
 
@@ -531,6 +674,8 @@ def create_condition_effect(
         type_specific=conditions,
         axes=axes,
         directions=directions,
+        direction_basis=direction_basis,
+        direction_hundredths_deg=direction_hundredths_deg,
     )
 
 

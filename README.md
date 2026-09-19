@@ -90,6 +90,7 @@ Install dependency:
 
 ```bash
 pip install comtypes
+pip install PyQt6       # only needed for the GUI testers
 ```
 
 ---
@@ -102,9 +103,10 @@ directinput_ffb/
 ├── dinput_types.py                       # Low-level Win32 + ctypes types
 ├── dinput_definitions.py                 # DirectInput constants, GUIDs, structures, COM interfaces
 ├── dinput_api.py                         # Device management and setup
-├── dinput_effects.py                     # Force effect creation and control
-├── main.py                               # Demo: play supported effects
-├── py_directinput_ffb_gui_tester.py      # Demo: PyQt6 GUI for testing DirectInput force-feedback effects
+└── dinput_effects.py                     # Force effect creation and control
+
+main.py                                   # Demo: play supported effects
+py_directinput_ffb_gui_tester.py          # Demo: PyQt6 GUI for testing DirectInput force-feedback effects
 ```
 
 ### Key Concepts
@@ -112,7 +114,7 @@ directinput_ffb/
 - **COM Interfaces** are defined using `comtypes`
 - **Structures** mirror DirectInput C structs exactly
 - **Memory ownership is explicit** (important for stability)
-- **Callbacks are retained** to prevent garbage collection
+- **Enumeration callbacks are synchronous**: results are copied into Python objects before the call returns
 
 ---
 
@@ -136,16 +138,27 @@ Run the built-in demo to test all supported effects:
 python main.py
 ```
 
-Run the GUI to test all supported effects:
+This will:
+- Detect a compatible FFB device
+- Enumerate supported effects
+- Play each effect once
+
+Run the simple GUI tabbed tester:
 
 ```bash
 python py_directinput_ffb_gui_tester.py
 ```
 
-This will:
-- Detect a compatible FFB device
-- Enumerate supported effects
-- Play each effect once
+Run the **FFB Test Tool** (full-featured tester ported from [FFBTestTool](https://github.com/barsk/FFBTestTool)):
+
+```bash
+python directinput_ffb_test_tool.py
+```
+
+The FFB Test Tool adds: a front-on yoke/wheel visualisation with commanded force
+vectors and live position, a background Spring safeguard (on by default), sliders
+that update a running effect live, an envelope editor, a compass direction pad,
+device gain control, and a session log file.
 
 ---
 
